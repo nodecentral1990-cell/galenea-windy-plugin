@@ -1,0 +1,44 @@
+{
+    "name": "windy-plugin-passage-plan",
+    "version": "0.24.1",
+    "description": "Passage plan aid for ships on Windy.com: route editor, ETA, ship positions, weather along route and IMO MSC.1/Circ.1228 checks. Aid only, not ECDIS.",
+    "main": "dist/plugin.min.js",
+    "type": "module",
+    "scripts": {
+        "build": "rm -rf dist && mkdir dist && SERVE=false rollup -c && cp package.json dist/",
+        "build:win": "rmdir /s /q dist && mkdir dist && set SERVE=false && rollup -c && copy package.json dist\\",
+        "start": "rollup -w -c",
+        "test": "node --import tsx --test test/*.test.ts",
+        "check": "svelte-check --tsconfig ./tsconfig.check.json --threshold error",
+        "harness": "mkdir -p harness/dist && cp node_modules/leaflet/dist/leaflet.js node_modules/leaflet/dist/leaflet.css harness/index.html harness/dist/ && rollup -c harness/rollup.config.js",
+        "test:screens": "npm run harness && node harness/run.cjs harness/shots",
+        "test:phone": "npm run harness && node harness/phone.cjs harness/phone-shots"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/nodecentral1990-cell/Nav-Plugins.git"
+    },
+    "keywords": [
+        "windy",
+        "windy.com",
+        "plugins",
+        "passage plan",
+        "rtz",
+        "ecdis"
+    ],
+    "author": "Capt. Node Central",
+    "license": "MIT",
+    "homepage": "https://github.com/nodecentral1990-cell/Nav-Plugins",
+    "dependencies": {
+        "@windycom/plugin-devtools": "^3.0.3",
+        "fast-xml-parser": "^5.11.2",
+        "fflate": "^0.8.3",
+        "geographiclib-geodesic": "^2.2.0"
+    },
+    "devDependencies": {
+        "leaflet": "^1.9.4",
+        "svelte-check": "^4.7.6",
+        "tsx": "^4.23.15",
+        "typescript": "5.9.3"
+    }
+}

@@ -1,0 +1,78 @@
+// Phone check (owner, 2026-11-02): every section at phone size, in Windy's "fullscreen" phone layout.
+// Usage: node harness/phone.cjs <out-dir> [width] [height]
+const path = require('path');
+const { chromium } = require(path.join(require('child_process').execSync('npm root -g').toString().trim(), 'playwright'));
+const out = process.argv[2] || 'harness/phone';
+const W = Number(process.argv[3] || 390);
+const H = Number(process.argv[4] || 844);
+const fixture = path.join(__dirname, '../test/fixtures/made-up-furuno-style.rtz');
+const log = [];
+const ok = (c, m) => log.push((c ? 'PASS ' : 'FAIL ') + m);
+(async () => {
+    require('fs').mkdirSync(out, { recursive: true });
+    const browser = await chromium.launch();
+    const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    const errors = [];
+    page.on('pageerror', e => errors.push(String(e)));
+    await page.route(/open-meteo\.com|openseamap|gebco/, r => r.fulfill({ status: 200, body: '{}' }));
+    await page.goto('file://' + path.join(__dirname, 'dist/index.html'));
+    await page.waitForTimeout(600);
+    const noSideScroll = async name => {
+        const r = await page.evaluate(() => { const el = document.querySelector('.plugin__content'); return { sw: el.scrollWidth, cw: el.clientWidth }; });
+        ok(r.sw <= r.cw + 1, `${name}: fits the width, no sideways scrolling of the panel (${r.sw} / ${r.cw} px)`);
+    };
+    const shot = async name => page.screenshot({ path: `${out}/${name}.png`, fullPage: false });
+    ok((await page.locator('.gp').count()) === 0, 'graph window not opened by itself on a phone (it would cover the panel)');
+    ok((await page.locator('.sb').count()) === 0, 'ship window not shown over the panel on a phone');
+    const navBox = await page.locator('nav.g-nav').boundingBox();
+    ok(navBox && navBox.width <= W, `section bar fits the screen (${Math.round(navBox?.width ?? 0)} px)`);
+    await page.setInputFiles('input[type=file]', fixture);
+    await page.waitForTimeout(400);
+    // ETD = now (date box → Now → OK)
+    await page.locator('.g-card', { hasText: 'Times (UTC)' }).locator('.dtf__value').first().click();
+    await page.locator('.dtf__pop button', { hasText: /^Now$/ }).click();
+    await page.locator('.dtf__pop button', { hasText: /^OK$/ }).click();
+    await page.waitForTimeout(300);
+    await shot('p01-route'); await noSideScroll('Route');
+    const nav = n => page.locator('nav.g-nav button', { hasText: n }).click();
+    const seg = n => page.locator('.g-shell > .g-seg button', { hasText: n }).click();
+    await seg('Speed & fuel'); await page.waitForTimeout(200); await shot('p02-speed'); await noSideScroll('Speed & fuel');
+    await seg('Distances'); await page.waitForTimeout(200); await shot('p03-distances'); await noSideScroll('Distances');
+    await nav('Weather'); await page.waitForTimeout(200);
+    await page.locator('button', { hasText: /Get (latest )?forecast along route/ }).click();
+    await page.waitForSelector('.wo', { state: 'detached', timeout: 180000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    await shot('p04-weather'); await noSideScroll('Weather');
+    await page.locator('.g-card', { hasText: 'Weather table' }).scrollIntoViewIfNeeded().catch(() => {});
+    await shot('p04b-weather-table');
+    await page.locator('.g-card', { hasText: 'Forecast along the route' }).locator('.g-hint').first().click();
+    await page.waitForTimeout(200);
+    const pop = await page.locator('.g-pop').boundingBox();
+    ok(pop && pop.x >= 0 && pop.x + pop.width <= W + 1, `ⓘ explanation fits the phone screen (${Math.round(pop?.x ?? -1)}–${Math.round((pop?.x ?? 0) + (pop?.width ?? 0))})`);
+    await shot('p05-hint');
+    await page.keyboard.press('Escape');
+    await nav('Motion'); await page.waitForTimeout(300);
+    await page.locator('.mt button', { hasText: /^ETD$/ }).click();
+    await page.locator('.mt button', { hasText: '3 h ▶' }).click();
+    await page.waitForTimeout(400);
+    ok((await page.locator('.g-shell .rp').count()) === 1, 'Motion: the time buttons bring the ship and the diagram up without Windy\'s slider');
+    await shot('p06-motion'); await noSideScroll('Motion');
+    const rp = await page.locator('.g-shell .rp svg').first().boundingBox().catch(() => null);
+    ok(!rp || rp.width <= W, `polar diagram fits the phone width (${Math.round(rp?.width ?? 0)} px)`);
+    await nav('Optimise'); await page.waitForTimeout(200); await shot('p07-optimise'); await noSideScroll('Optimise');
+    await seg('Change the track'); await page.waitForTimeout(200); await shot('p08-track'); await noSideScroll('Change the track');
+    await seg('Compare'); await page.waitForTimeout(200); await shot('p09-compare'); await noSideScroll('Compare');
+    await nav('Settings'); await page.waitForTimeout(200); await shot('p10-settings'); await noSideScroll('Settings');
+    await page.locator('details summary', { hasText: 'Ship particulars' }).click();
+    await page.waitForTimeout(200); await shot('p11-ship'); await noSideScroll('Settings → Ship particulars');
+    await page.locator('.g-help-btn').click(); await page.waitForTimeout(200); await shot('p12-help'); await noSideScroll('Help');
+    // graph window opened by hand: full screen over the panel, with a close button
+    await page.locator('.g-head button[aria-label="Graph window"]').click();
+    await page.waitForTimeout(1500);
+    const gp = await page.locator('.gp').boundingBox().catch(() => null);
+    ok(gp && gp.width <= W + 1 && gp.x >= -1, `graph window fits the phone when opened (${Math.round(gp?.width ?? 0)} px wide)`);
+    await shot('p13-graphs');
+    ok(errors.length === 0, 'no page errors: ' + errors.join(' / ').slice(0, 300));
+    await browser.close();
+    console.log(log.join('\n'));
+})().catch(e => { console.log(log.join('\n')); console.error(e); process.exit(1); });

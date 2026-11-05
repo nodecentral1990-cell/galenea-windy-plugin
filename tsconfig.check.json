@@ -1,0 +1,9 @@
+{
+    "extends": "./tsconfig.json",
+    "compilerOptions": {
+        "lib": ["es2022", "DOM", "DOM.Iterable"],
+        "skipLibCheck": true,
+        "incremental": false
+    },
+    "include": ["src/**/*.ts", "src/**/*.svelte", "declarations/*.d.ts"]
+}

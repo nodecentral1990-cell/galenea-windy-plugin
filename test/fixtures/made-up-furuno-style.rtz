@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- MADE-UP TEST ROUTE. Not a real passage plan. Do not use for navigation.
+     Structure copied from a Furuno RTZ 1.0 export (Furuno extensions, the
+     misspelt "sheduleElement" tag, per-waypoint local time in minutes). -->
+<route version="1.0" xmlns="http://www.cirm.org/RTZ/1/0">
+  <routeInfo routeName="TEST ALPHA to TEST BRAVO" optimizationMethod="MAX speed">
+    <extensions>
+      <extension manufacturer="Furuno" name="AdditionalRouteInfo" version="1.0">
+        <property income="0" channelLimitMode="1" safetyContour="30" ukcLimit="30.000000"/>
+        <userCharts/>
+      </extension>
+    </extensions>
+  </routeInfo>
+  <waypoints>
+    <waypoint id="1" name="TEST ALPHA" radius="0.600000">
+      <position lat="20.000000" lon="-40.000000"/>
+      <extensions>
+        <extension manufacturer="Furuno" name="AdditionalLegInfo" version="1.0">
+          <property margin="0.000000" localtime="-180" isdst="0"/>
+        </extension>
+      </extensions>
+    </waypoint>
+    <waypoint id="2" name="" radius="0.600000">
+      <position lat="20.500000" lon="-38.000000"/>
+      <leg portsideXTD="0.500000" starboardXTD="0.500000" geometryType="Loxodrome" speedMin="0.100000" speedMax="12.000000" draughtForward="9.000000" draughtAft="9.500000"/>
+      <extensions>
+        <extension manufacturer="Furuno" name="AdditionalLegInfo" version="1.0">
+          <property margin="0.000000" localtime="-180" isdst="0"/>
+        </extension>
+      </extensions>
+    </waypoint>
+    <waypoint id="3" name="" radius="0.600000">
+      <position lat="35.000000" lon="-20.000000"/>
+      <leg portsideXTD="1.000000" starboardXTD="1.000000" geometryType="Orthodrome" speedMin="0.100000" speedMax="12.000000" draughtForward="9.000000" draughtAft="9.500000"/>
+      <extensions>
+        <extension manufacturer="Furuno" name="AdditionalLegInfo" version="1.0">
+          <property margin="0.000000" localtime="-60" isdst="0"/>
+        </extension>
+      </extensions>
+    </waypoint>
+    <waypoint id="4" name="TEST BRAVO" radius="0.600000">
+      <position lat="36.000000" lon="-15.000000"/>
+      <leg portsideXTD="0.500000" starboardXTD="0.500000" geometryType="Loxodrome" speedMin="0.100000" speedMax="12.000000" draughtForward="9.000000" draughtAft="9.500000"/>
+      <extensions>
+        <extension manufacturer="Furuno" name="AdditionalLegInfo" version="1.0">
+          <property margin="0.000000" localtime="0" isdst="0"/>
+        </extension>
+      </extensions>
+    </waypoint>
+  </waypoints>
+  <schedules>
+    <schedule id="1">
+      <manual>
+        <sheduleElement waypointId="1"/>
+        <sheduleElement waypointId="2" speed="12.000000"/>
+        <sheduleElement waypointId="3" speed="11.000000"/>
+        <sheduleElement waypointId="4" speed="10.000000"/>
+      </manual>
+    </schedule>
+  </schedules>
+</route>

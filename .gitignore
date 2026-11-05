@@ -1,0 +1,15 @@
+.tmp
+tmp
+.DS_Store
+.vscode
+.rollup.cache
+.secret-api-key.sh
+nohup.out
+node_modules
+*.log
+dist/*
+
+harness/dist
+harness/shots
+tsconfig.check.tsbuildinfo
+harness/phone-shots/
