@@ -10,6 +10,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.24.2',
+        date: '2026-11-07',
+        notes: [
+            "A new picture for Windy's plugin list, taken in real Windy. Nothing else changed.",
+        ],
+    },
+    {
         version: '0.24.1',
         date: '2026-11-04',
         notes: [

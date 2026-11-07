@@ -1,6 +1,6 @@
 {
     "name": "windy-plugin-passage-plan",
-    "version": "0.24.1",
+    "version": "0.24.2",
     "description": "Passage plan aid for ships on Windy.com: route editor, ETA, ship positions, weather along route and IMO MSC.1/Circ.1228 checks. Aid only, not ECDIS.",
     "main": "dist/plugin.min.js",
     "type": "module",
