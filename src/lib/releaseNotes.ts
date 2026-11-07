@@ -10,6 +10,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.25.0',
+        date: '2026-11-07',
+        notes: [
+            'Weather under the cursor: a bar at the top of the map shows the weather where the mouse rests, at the map time: position, wind and gust (Beaufort), SWH, sea, swell 1 and swell 2 with periods and directions, wave power, rain / thunder / fog, visibility and current (when Windy shows that layer), pressure, air and sea temperature, humidity. Minimise or close it; Settings → Map display.',
+            'Range rings: three rings around the ship at the map time; their spacing follows the map scale (e.g. 10 / 20 / 30 nm up to 200 / 400 / 600 nm). Settings → Map display.',
+            'Live polar (Motion → Live (GPS)): the position from the phone\'s or computer\'s GPS, the forecast there now, your heading and speed (GPS or typed in): IMO warnings, roll and pitch live as the ship moves.',
+        ],
+    },
+    {
         version: '0.24.2',
         date: '2026-11-07',
         notes: [

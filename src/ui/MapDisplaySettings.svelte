@@ -17,6 +17,14 @@
         </span>
     </label>
 </div>
+<label class="check" title="A bar at the top of the map with the weather where the mouse rests, at Windy's map time (computer only)">
+    <input type="checkbox" checked={$cursorBar.on} on:change={e => cursorBar.update(b => ({ ...b, on: e.currentTarget.checked }))} />
+    Weather under the cursor (bar at the top of the map)
+</label>
+<label class="check" title="Three rings around the ship at the map time; their spacing follows the map scale (10 / 20 / 30 nm … 100 / 200 / 300 nm)">
+    <input type="checkbox" bind:checked={$rangeRings} />
+    Range rings around the ship (3 rings, spacing follows the map scale)
+</label>
 <label class="check" title="Softer text and accents in the plugin panel and windows, for the wheelhouse at night">
     <input type="checkbox" bind:checked={$panelDim} />
     Dim the plugin panel (wheelhouse at night)
@@ -70,7 +78,7 @@
     ];
     import { SHIP_STYLES, shipSymbolSvg } from '../lib/shipSymbols';
     import { showPressureLines } from '../windy/weatherJobs';
-    import { flagColors, followShip, panelDim, route, shipStepH, shipStyle, shipWeather, showIsobars, showShipBox, updateRoute } from '../state';
+    import { cursorBar, rangeRings, flagColors, followShip, panelDim, route, shipStepH, shipStyle, shipWeather, showIsobars, showShipBox, updateRoute } from '../state';
 
     function setColor(k: 'color' | 'doneColor', e: Event) {
         const v = (e.target as HTMLInputElement).value;

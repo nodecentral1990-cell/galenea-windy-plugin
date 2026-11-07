@@ -163,6 +163,8 @@ async function loadSeries(lat: number, lon: number, step: 1 | 3): Promise<WxSeri
         precipAmount: arr(a, 'precipAmount'),
         icon: arr(a, 'icon'),
         temp: arr(a, 'temperature') ?? arr(a, 'temp'),
+        // ASSUMPTION: Windy's point forecast calls relative humidity "rh" (%); empty if it does not send it
+        rh: arr(a, 'rh'),
         sstC: sstOf(sea?.data?.header?.sst, air?.data?.header?.sst),
         wavesTs: (arr(w, 'ts') as number[] | undefined) ?? [],
         waves: arr(w, 'waves'),

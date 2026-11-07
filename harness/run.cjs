@@ -1082,6 +1082,35 @@ async function go(page, name) {
     await page.evaluate(() => (window.__windyFree = false));
     await page.unroute(/open-meteo\.com/, omFake);
 
+
+    // ---------- 0.25 (owner, 2026-11-02): weather under the cursor, range rings ----------
+    await go(page, 'Route');
+    await page.evaluate(() => window.__store.set('timestamp', Math.round(Date.now() / 3600e3) * 3600e3 + 6 * 3600e3));
+    await page.locator('button', { hasText: 'Show on map' }).first().click();
+    await page.waitForTimeout(800);
+    ok((await page.locator('.cb').count()) === 1, 'weather-under-the-cursor bar shown at the top of the map by default');
+    const cbMap = await page.locator('#map').boundingBox();
+    await page.mouse.move(cbMap.x + cbMap.width * 0.5, cbMap.y + cbMap.height * 0.55);
+    await page.waitForTimeout(1500);
+    const cbTxt = await page.locator('.cb').innerText();
+    ok(/\d+°\d+\.\d'[NS]/.test(cbTxt) && /Wind\s+\d+ kn/.test(cbTxt) && /SWH\s+\d+\.\d m/.test(cbTxt) && /Swell 1/.test(cbTxt) && /hPa/.test(cbTxt) && /Sea temp/.test(cbTxt), 'cursor bar shows position, wind, waves, pressure and temperatures: ' + cbTxt.replace(/\s+/g, ' ').slice(0, 160));
+    await page.screenshot({ path: `${out}/34-cursor-bar-rings.png` });
+    const rings = await page.locator('path.pp-ring').count();
+    ok(rings === 3, `three range rings around the ship at the map time (${rings})`);
+    const lbl1 = await page.locator('.pp-ring-label').allInnerTexts();
+    await page.evaluate(() => window.__map.setZoom(window.__map.getZoom() + 2, { animate: false }));
+    await page.waitForTimeout(600);
+    const lbl2 = await page.locator('.pp-ring-label').allInnerTexts();
+    ok(lbl1.length === 3 && lbl2.length === 3 && lbl1[0] !== lbl2[0], `ring spacing follows the map scale (${lbl1.join('/')} → ${lbl2.join('/')})`);
+    await page.locator('.cb button[aria-label="Minimise"]').click();
+    ok((await page.locator('.cb.cb--min').count()) === 1, 'cursor bar minimises');
+    await page.locator('.cb button[aria-label="Show everything"]').click();
+    await page.locator('.cb button[aria-label="Close"]').click();
+    ok((await page.locator('.cb').count()) === 0, 'cursor bar closes (Settings → Map display brings it back)');
+    const mdSec = await settings('Map display');
+    await mdSec.locator('label', { hasText: 'Weather under the cursor' }).locator('input').check();
+    ok((await page.locator('.cb').count()) === 1, 'cursor bar switched on again from Settings');
+
     // Updates: newer version found, one-click install through Windy, or the manual steps
     // two newer versions than this one: the plugin must find the newest
     const [ma, mi, pa] = require('../package.json').version.split('.').map(Number);

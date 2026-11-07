@@ -130,6 +130,10 @@ const CSS = String.raw`
 .pp-place-dot--pass { border-color: #00b3a4; background: #fff; }
 .pp-place-label { position: absolute; left: 14px; top: -3px; white-space: nowrap; font: 600 11px system-ui, sans-serif; color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; pointer-events: none; }
 
+/* range rings labels (on the map) */
+.pp-ring-icon { background: none; border: 0; }
+.pp-ring-label { display: inline-block; padding: 0 5px; border-radius: 8px; background: rgba(10,24,48,.75); color: #cfefff; font: 600 11px/16px system-ui, sans-serif; white-space: nowrap; }
+
 /* one-line caption with its ⓘ */
 .pp .g-hl { display: flex; align-items: center; gap: 2px 6px; flex-wrap: wrap; margin: 4px 0; }
 

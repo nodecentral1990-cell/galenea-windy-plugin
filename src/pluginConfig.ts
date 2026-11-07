@@ -2,7 +2,7 @@ import type { ExternalPluginConfig } from '@windy/interfaces';
 
 const config: ExternalPluginConfig = {
     name: 'windy-plugin-passage-plan',
-    version: '0.24.2',
+    version: '0.25.0',
     icon: '🚢',
     // Name and tagline (owner, 2026-11-02): Galenea (Greek goddess of calm seas) – made for seafarers, by a seafarer.
     // Windy allows titles under 50 characters; the author shows in Windy's own author field.

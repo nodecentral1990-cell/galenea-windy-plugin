@@ -8,6 +8,13 @@
     </Hint>
     <div class="g-card__actions"><button class="pp-btn pp-btn--ghost small" on:click={openPolarSettings} title="Polar diagram settings: which warnings are shown"><Icon name="sliders" size={14} /> Polar settings</button></div>
 </div>
+<div class="g-seg mode" role="radiogroup" aria-label="Motion views">
+    <button role="radio" class="g-seg__opt" class:is-on={mode === 'plan'} aria-checked={mode === 'plan'} on:click={() => setMode('plan')}><Icon name="clock" size={15} />At the map time</button>
+    <button role="radio" class="g-seg__opt" class:is-on={mode === 'live'} aria-checked={mode === 'live'} on:click={() => setMode('live')}><Icon name="crosshair" size={15} />Live (GPS)</button>
+</div>
+{#if mode === 'live'}
+    <LivePolar />
+{:else}
 <!-- time buttons (phones cannot see Windy's time slider while the plugin is open; handy on a computer too) -->
 <div class="mt">
     <button class="pp-btn small" on:click={() => stepTime(-3)} title="3 hours earlier">◀ 3 h</button>
@@ -50,7 +57,12 @@
         <div class="g-empty"><p>No forecast for this time and place (beyond the forecast, or not fetched yet: see the Weather section).</p></div>
     {/if}
 {/if}
+{/if}
 </div>
+
+<script context="module" lang="ts">
+    let MOTION_MODE: 'plan' | 'live' = 'plan';
+</script>
 
 <script lang="ts">
     import store from '@windy/store';
@@ -72,8 +84,16 @@
     import { norm180 } from '../lib/geo';
     import { flagColors, plan, planKey, route, shipStyle, sweepKey, thresholds, timelineTs, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
     import RiskPolar from './RiskPolar.svelte';
+    import LivePolar from './LivePolar.svelte';
     import { openSettingsSection } from './SettingsTab.svelte';
 
+    // live GPS or the plan at the map time (kept while the plugin is open)
+    let mode: 'plan' | 'live' = MOTION_MODE;
+    function setMode(m: 'plan' | 'live') {
+        mode = m;
+        MOTION_MODE = m;
+        logEvent('tab', `Motion view: ${m}`);
+    }
     /** Switches the plugin to the Settings tab */
     export let onSettings: (() => void) | null = null;
     function openPolarSettings() {

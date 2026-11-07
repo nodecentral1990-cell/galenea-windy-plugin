@@ -100,6 +100,9 @@
 {#if graphsShown && layer}
     <GraphPanel />
 {/if}
+{#if $cursorBar.on && layer && !$phone}
+    <CursorBar />
+{/if}
 <!-- phones: Windy shows the plugin full screen, so the ship window would cover it; Motion shows the same diagram -->
 {#if $showShipBox && layer && !$phone}
     <ShipBox
@@ -199,6 +202,9 @@
     import { startRollChart, stopRollChart } from './windy/rollChart';
     import { startChartLayers, stopChartLayers } from './windy/chartLayer';
     import { startPlaces, stopPlaces } from './windy/placesLayer';
+    import { setRingCenter, startRangeRings, stopRangeRings } from './windy/rangeRingsLayer';
+    import CursorBar from './ui/CursorBar.svelte';
+    import { cursorBar } from './state';
     import { logEvent } from './lib/activityLog';
     import GraphPanel from './ui/GraphPanel.svelte';
     import { graphState, phoneGraphOpen, toggleGraphs } from './ui/graphState';
@@ -326,6 +332,7 @@
         safe('Roll chart', startRollChart);
         safe('Nautical charts', startChartLayers);
         safe('Ports and canals', startPlaces);
+        safe('Range rings', startRangeRings);
         layer = new RouteLayer({
             onMove(uid, lat, lon) {
                 updateRoute(r => {
@@ -398,6 +405,7 @@
         stopRollChart();
         stopChartLayers();
         stopPlaces();
+        stopRangeRings();
         closeMenu();
         store.off('timestamp', onTs);
         for (const k of ['keydown', 'keyup', 'keypress']) window.removeEventListener(k, keyGuard as EventListener, true);
@@ -426,6 +434,7 @@
     let now: ShipPosition | null = null;
     $: ships = $shipStepH > 0 ? shipPositions($route, $plan, $shipStepH, 1500) : [];
     $: now = $plan.etd != null && $plan.eta != null && $timelineTs >= $plan.etd && $timelineTs <= $plan.eta ? positionAt($route, $plan, $timelineTs) : null;
+    $: try { setRingCenter(now ? { lat: now.lat, lon: now.lon } : null); } catch { /* rings are optional */ }
     // Weather on the ship symbols, only when the forecast belongs to the current plan
     let glyph: (p: ShipPosition) => ShipGlyph | null = () => null;
     $: glyph =

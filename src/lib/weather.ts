@@ -46,6 +46,8 @@ export interface WxSeries {
     wavesRefTime?: string;
     /** Visibility in metres (Open-Meteo only; Windy's comes from its map layer) */
     vis?: (number | null)[];
+    /** Relative humidity, % (Windy "rh" if sent; Open-Meteo relative_humidity_2m) */
+    rh?: (number | null)[];
     /** Wind sea (wind waves) height / direction FROM / period on the wave times (Open-Meteo only) */
     windWave?: (number | null)[];
     windWaveDir?: (number | null)[];
@@ -98,6 +100,8 @@ export interface WxPoint {
     airTempC?: number | null;
     /** Sea surface temperature, °C (one value per forecast point, not hourly) */
     seaTempC?: number | null;
+    /** Relative humidity, % */
+    rhPct?: number | null;
     /** Visibility, nautical miles (from Windy's visibility layer) */
     visNm?: number | null;
     /** Values only available from the map layer sweep */
@@ -248,6 +252,7 @@ export function sampleSeries(s: WxSeries, t: number): WxPoint | null {
         seaHs: valid(wwH) ? wwH : valid(hs) ? Math.sqrt(Math.max(0, hs * hs - (sw1 ?? 0) ** 2 - (sw2 ?? 0) ** 2)) : null,
         ...(valid(wwH) ? { seaDir: wd(s.windWaveDir), seaPeriod: wv(s.windWavePeriod) } : {}),
         ...(valid(visM) ? { visNm: visM / 1852 } : {}),
+        rhPct: valueAt(s.ts, s.rh, t, 'lin'),
         ...wavePower(wv(s.wavesPower), hs, wv(s.wavesPeriod)),
         airTempC: valid(temp) ? (temp > 150 ? temp - 273.15 : temp) : null,
         seaTempC: valid(s.sstC) ? s.sstC : null,

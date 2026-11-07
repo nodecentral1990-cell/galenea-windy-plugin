@@ -10,7 +10,7 @@ import { fmtRun, type SeriesPart, type WxSeries } from './weather';
 type Arr = (number | null)[];
 
 /** Values on the air times (ts) */
-export const AIR_KEYS = ['wind', 'windGust', 'windDir', 'pressure', 'precipAmount', 'icon', 'temp', 'vis'] as const;
+export const AIR_KEYS = ['wind', 'windGust', 'windDir', 'pressure', 'precipAmount', 'icon', 'temp', 'vis', 'rh'] as const;
 /** Values on the wave times (wavesTs) */
 export const WAVE_KEYS = ['waves', 'wavesDir', 'wavesPeriod', 'wavesPower', 'swell1', 'swell1Dir', 'swell1Period', 'swell2', 'swell2Dir', 'swell2Period', 'windWave', 'windWaveDir', 'windWavePeriod'] as const;
 type AirKey = (typeof AIR_KEYS)[number];
@@ -162,7 +162,7 @@ export function sourceAt(s: WxSeries | null | undefined, t: number, group: 'air'
 export const OM_AIR_MODEL = 'ecmwf_ifs025';
 /** Open-Meteo wave model: GFS Wave 0.25° (worldwide, 16 days, the only one with sea / swell 1 / swell 2 split) */
 export const OM_WAVE_MODEL = 'ncep_gfswave025';
-export const OM_AIR_VARS = ['wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'pressure_msl', 'temperature_2m', 'precipitation', 'weather_code', 'visibility'];
+export const OM_AIR_VARS = ['wind_speed_10m', 'wind_direction_10m', 'wind_gusts_10m', 'pressure_msl', 'temperature_2m', 'precipitation', 'weather_code', 'visibility', 'relative_humidity_2m'];
 export const OM_WAVE_VARS = [
     'wave_height',
     'wave_direction',
@@ -220,6 +220,7 @@ export function omToSeries(lat: number, lon: number, air: OmJson, waves: OmJson,
         icon: num(ha, 'weather_code')?.map(wmoIcon),
         temp: num(ha, 'temperature_2m'),
         vis: num(ha, 'visibility'),
+        rh: num(ha, 'relative_humidity_2m'),
         wavesTs: wts,
         waves: num(hw, 'wave_height'),
         wavesDir: num(hw, 'wave_direction'),

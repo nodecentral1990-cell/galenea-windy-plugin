@@ -383,3 +383,11 @@ export const phone = readable(false, set => {
         return () => {};
     }
 });
+
+/** Weather under the cursor bar at the top of the map (owner, 2026-11-02): on by default, can be minimised / closed */
+export const cursorBar = persisted<{ on: boolean; min: boolean }>('cursorBar', { on: true, min: false });
+/** Range rings around the ship at the map time (owner, 2026-11-02): 3 rings, spacing follows the map scale */
+export const rangeRings = persisted<boolean>('rangeRings', true);
+/** Live polar from the phone's GPS (owner, 2026-11-02): heading typed in (GPS gives only the course over ground),
+ *  speed from GPS or typed in */
+export const liveSettings = persisted<{ heading: number; speedMode: 'gps' | 'manual'; manualSpeed: number }>('liveSettings', { heading: 0, speedMode: 'gps', manualSpeed: 12 });
