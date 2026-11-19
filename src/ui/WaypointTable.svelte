@@ -66,8 +66,8 @@
                         {/if}
                     </td>
                     <td class="nowrap">
-                        <button class="icon" title="Insert a waypoint after this one" on:click|stopPropagation={() => insertAfter(i)}>＋</button>
-                        <button class="icon" title="Delete" on:click|stopPropagation={() => deleteWaypoints([w.uid])}>✕</button>
+                        <button class="icon" title="Insert a waypoint after this one" on:click|stopPropagation={() => insertAfter(i)}><Icon name="plus" size={13} /></button>
+                        <button class="icon" title="Delete" on:click|stopPropagation={() => deleteWaypoints([w.uid])}><Icon name="x" size={13} /></button>
                     </td>
                 </tr>
             {/each}
@@ -76,6 +76,7 @@
 </div>
 
 <script lang="ts">
+    import Icon from './base/Icon.svelte';
     import { get } from 'svelte/store';
 
     import { fmtLat, fmtLon, parseCoord } from '../lib/format';

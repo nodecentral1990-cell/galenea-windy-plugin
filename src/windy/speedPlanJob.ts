@@ -37,6 +37,12 @@ export interface SpSettings {
     stopFuel: number | null;
     /** Hours between speed changes */
     stepH: number;
+    /** Course alterations allowed (owner, 2026-11-13) */
+    allowAlter: boolean;
+    /** Largest alteration either side of the track course, degrees */
+    maxAlterDeg: 30 | 60 | 90;
+    /** Furthest off the track, nm */
+    maxOffNm: number;
 }
 const KEY = 'windy-plugin-passage-plan:speedplan';
 const DEFAULTS: SpSettings = {
@@ -46,7 +52,12 @@ const DEFAULTS: SpSettings = {
     minLandNm: 30,
     stopFuel: null,
     stepH: 3,
+    allowAlter: true,
+    maxAlterDeg: 60,
+    maxOffNm: 60,
 };
+/** The alterations tried for a largest alteration */
+export const ALTERATIONS: Record<30 | 60 | 90, number[]> = { 30: [15, 30], 60: [20, 40, 60], 90: [30, 60, 90] };
 function load(): SpSettings {
     try {
         const s = JSON.parse(localStorage.getItem(KEY) ?? '{}');
@@ -111,8 +122,9 @@ export async function runSpeedPlan(arriveMode: 'planned' | 'earliest' | 'own', o
         return;
     }
     const signal = { cancelled: false };
-    workStart('Working out a safe speed plan', ['Trying speeds and stops'], signal);
-    workProgress('Trying speeds and stops', 0, 1);
+    const stepTxt = s.allowAlter ? 'Trying speeds, stops and course alterations' : 'Trying speeds and stops';
+    workStart(s.allowAlter ? 'Working out a safe speed and course plan' : 'Working out a safe speed plan', [stepTxt], signal);
+    workProgress(stepTxt, 0, 1);
     await new Promise(res => setTimeout(res, 50));
     try {
         const track = trackOf(p);
@@ -162,6 +174,9 @@ export async function runSpeedPlan(arriveMode: 'planned' | 'earliest' | 'own', o
             hazards,
             avoidLevel: s.level,
             stepH: s.stepH,
+            alterations: s.allowAlter ? ALTERATIONS[s.maxAlterDeg] ?? ALTERATIONS[60] : [],
+            maxOffNm: s.maxOffNm,
+            canBeAt: (lat, lon) => farFromLand(lat, lon, s.minLandNm, isLand),
         });
         if (barredLeftOut) res.notes.unshift(`Barred RPM ranges left out (⚙ Settings → Speed, RPM and fuel).`);
         if (r.useCurrents) res.notes.push('Ocean currents are not included in the speed plan (the route figures after you take it do include them).');
@@ -176,9 +191,10 @@ export async function runSpeedPlan(arriveMode: 'planned' | 'earliest' | 'own', o
         });
         spOutcome.set({ res, drift, arriveBy, startMs, fromFix, barredLeftOut, avoided, level: s.level, runInfo: forecastInfo(series), key: spRouteKey(), taken: false });
         const stops = res.segments.filter(x => x.action === 'stop').length;
+        const alters = res.segments.filter(x => x.alter !== 0 && Math.abs(x.offTo) > Math.abs(x.offFrom)).length;
         spStatus.set(
             res.ok
-                ? `${res.mode === 'hard' ? 'Done: a plan that keeps out of the chosen weather' : 'Done, but the chosen weather cannot be fully avoided'} (${res.segments.length} speed changes${stops ? `, ${stops} stop${stops > 1 ? 's' : ''}` : ''}; ${(res.stats.ms / 1000).toFixed(1)} s).`
+                ? `${res.mode === 'hard' ? 'Done: a plan that keeps out of the chosen weather' : 'Done, but the chosen weather cannot be fully avoided'} (${res.segments.length} changes${stops ? `, ${stops} stop${stops > 1 ? 's' : ''}` : ''}${alters ? `, ${alters} course alteration${alters > 1 ? 's' : ''}` : ''}; ${(res.stats.ms / 1000).toFixed(1)} s).`
                 : `No plan found. ${res.notes.join(' ')}`,
         );
         logEvent('speedplan', `Safe speed plan: ${res.ok ? res.mode : 'none'}, ${res.segments.length} segments, ${res.stats.ms} ms`, { settings: s, arriveBy, notes: res.notes });

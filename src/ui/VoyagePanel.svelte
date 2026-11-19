@@ -1,16 +1,22 @@
 <!-- The voyage on this route: start it, type in the present position (UTC) and
      the plan restarts from there with the speed needed for the next fixed time / ETA. -->
-<div class="g-card">
+<div class="g-card" class:vp--idle={!$route.voyage} data-g="voyage-card">
 <div class="g-card__head">
     <span class="g-card__title">Voyage</span>
     <Hint title="Voyage">
         <p>Starts the voyage on the route: the part already sailed (by the plan, compared with the present time in UTC) turns to the "sailed part" colour.</p>
         <p>Then type in your <b>present position</b> and time: the future track runs from that position to the next waypoint, with the speed needed for the next fixed time / ETA.</p>
     </Hint>
+    <Gear host="voyage" chips={[{ id: 'map', part: 'ships', label: 'Track and sailed colours' }]} />
+    {#if !$route.voyage}
+        <!-- one line while no voyage is running: the button sits in the card head -->
+        <div class="g-card__actions">
+            <button class="pp-btn small" disabled={$route.waypoints.length < 2 || $route.etd == null} on:click={start} title={$route.etd == null ? 'Set the ETD first' : 'The part already sailed is then shown, and you can type in your present position'}><Icon name="play" size={14} /> Start voyage on this route</button>
+        </div>
+    {/if}
 </div>
-{#if !$route.voyage}
-    <button class="pp-btn" disabled={$route.waypoints.length < 2 || $route.etd == null} on:click={start} title={$route.etd == null ? 'Set the ETD first' : ''}><Icon name="play" size={14} /> Start voyage on this route</button>
-{:else}
+<SettingsFold host="voyage" />
+{#if $route.voyage}
     <div class="active">
         <b>Voyage running</b> since {fmtTime($route.voyage.startedAt)} UTC.
         {#if $plan.fix}
@@ -49,11 +55,13 @@
             ETA {fmtTime($plan.eta)} UTC.
         </div>
     {/if}
-    <button class="pp-btn pp-btn--ghost" on:click={end}>■ End voyage</button>
+    <button class="pp-btn pp-btn--ghost" on:click={end}><Icon name="stop" size={14} /> End voyage</button>
 {/if}
 </div>
 
 <script lang="ts">
+    import Gear from './base/Gear.svelte';
+    import SettingsFold from './settings/SettingsFold.svelte';
     import Hint from './base/Hint.svelte';
     import Icon from './base/Icon.svelte';
     import { get } from 'svelte/store';
@@ -121,6 +129,9 @@
 </script>
 
 <style lang="less">
+    .vp--idle :global(.g-card__head) {
+        margin-bottom: -2px;
+    }
     .row {
         display: flex;
         flex-wrap: wrap;

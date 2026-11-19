@@ -19,10 +19,14 @@ export interface LayerCallbacks {
     onSelect(uid: string, additive: boolean): void;
     /** Click on empty map (used in "add waypoints" mode) */
     onMapClick(lat: number, lon: number): void;
+    /** A click that picks a place (port weather / tides) comes first: true when it was used */
+    pick?(lat: number, lon: number): boolean;
     /** Right-click on a waypoint, at screen position x, y */
     onWaypointMenu(uid: string, x: number, y: number): void;
     /** Right-click on a leg: offer to insert before waypoint `beforeIndex` */
     onLegMenu(beforeIndex: number, lat: number, lon: number, x: number, y: number): void;
+    /** Right-click on open water (not on a waypoint or a course line) */
+    onWaterMenu?(lat: number, lon: number, x: number, y: number): void;
     /** Whether a plain click on a leg inserts a waypoint */
     legClickInserts(): boolean;
     /** A ship symbol was clicked: its planned time */
@@ -71,6 +75,7 @@ export class RouteLayer {
         // Windy notes that clicks over plugin-drawn shapes are unreliable with its new map engine.
         this.onClick = (e: unknown) => {
             const ev = e as L.LeafletMouseEvent;
+            if (this.cb.pick?.(ev.latlng.lat, ev.latlng.lng)) return;
             const leg = this.legAt(ev.containerPoint);
             if (leg && this.cb.legClickInserts()) {
                 this.cb.onInsert(leg.beforeIndex, ev.latlng.lat, ev.latlng.lng);
@@ -91,6 +96,12 @@ export class RouteLayer {
             if (leg) {
                 oe?.preventDefault?.();
                 this.cb.onLegMenu(leg.beforeIndex, ev.latlng.lat, ev.latlng.lng, oe?.clientX ?? 0, oe?.clientY ?? 0);
+                return;
+            }
+            // open water: the plugin's own short menu (port weather / tides / waypoint here)
+            if (this.cb.onWaterMenu) {
+                oe?.preventDefault?.();
+                this.cb.onWaterMenu(ev.latlng.lat, ev.latlng.lng, oe?.clientX ?? 0, oe?.clientY ?? 0);
             }
         };
         map.on('moveend', this.onView);

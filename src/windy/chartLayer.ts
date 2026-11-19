@@ -6,7 +6,9 @@
 // 0.23.2: no extra map pane (Windy's newer map may not support them); the tile layer sits in Windy's own tile layer stack.
 // NOT official charts: an aid for orientation only. Third-party servers: if they are down, nothing is drawn.
 
+import { openSetWin } from '../ui/settings/foldState';
 import { map } from '@windy/map';
+import { mapKey, type MapKey } from '../ui/floatWin';
 import { get } from 'svelte/store';
 
 import { logEvent } from '../lib/activityLog';
@@ -19,7 +21,7 @@ export const SEAMARK_MIN_ZOOM = 9;
 let seamarks: L.TileLayer | null = null;
 let depth: L.TileLayer | null = null;
 let errors = 0;
-let legend: HTMLDivElement | null = null;
+let legend: MapKey | null = null;
 
 function showLegend(c: ChartLayers): void {
     const on = c.seamarks || c.depth;
@@ -29,19 +31,20 @@ function showLegend(c: ChartLayers): void {
         return;
     }
     if (!legend) {
-        legend = document.createElement('div');
-        legend.className = 'pp-chart-legend';
-        legend.style.cssText =
-            'position:absolute;left:8px;bottom:64px;z-index:500;max-width:300px;padding:4px 8px;border-radius:6px;background:rgba(14,20,30,.82);color:#e8edf4;font:11px/1.35 system-ui,sans-serif;pointer-events:auto';
-        (map.getContainer() as HTMLElement).appendChild(legend);
-    }
-    const z = map.getZoom();
+        // the credit and "not for navigation" must stay on the map while the chart is shown: ✕ only makes it small
+        legend = mapKey('chartkey', 'pp-chart-legend', {
+            minW: 200,
+            gear: { title: 'Settings: Nautical charts and places', onClick: w => openSetWin([{ id: 'charts' }], w) },
+            onClose: () => legend?.win?.toggleMin(true),
+            closeTitle: 'Make it small (the credit and "not for navigation" stay while the chart is shown; switch the chart off in Settings to remove it)',
+        });
+    }    const z = map.getZoom();
     const parts: string[] = [];
     if (c.seamarks) parts.push(`⚓ Seamarks: © OpenSeaMap contributors (CC BY-SA), data © OpenStreetMap (ODbL)${z < SEAMARK_MIN_ZOOM ? ` · <b>zoom in to see them</b> (shown from zoom ${SEAMARK_MIN_ZOOM})` : ''}`);
     if (c.depth) parts.push('Depth shading: GEBCO (public domain)');
     parts.push('<b>Not official charts. Not for navigation.</b>');
     if (errors > 6) parts.push('<span style="color:#ffb4a8">Chart server not answering: some tiles missing.</span>');
-    legend.innerHTML = parts.join('<br>');
+    legend.set('⚓ Nautical chart', parts.join('<br>'));
 }
 
 /** Bring the map in line with the chart settings */

@@ -2,6 +2,7 @@
 // derived values, limit checks and the rows of the weather table.
 // Pure logic: the calls to Windy live in ../windy/forecast.ts.
 
+import { extraAt, type Extra } from './marineExtra';
 import { checkWaveSystem, encounterAngle, encounterPeriod, estimateRollPeriod, type ResonanceHit, type ResonanceSettings, type WaveSystem } from './circ1228';
 import { defaultCold, ICING_RATE, icingRank, sprayIcing, type ColdLimits } from './icing';
 import { norm180, norm360 } from './geo';
@@ -54,6 +55,8 @@ export interface WxSeries {
     windWavePeriod?: (number | null)[];
     /** Where each stretch of time comes from (Windy now, Windy earlier run kept in the browser, Open-Meteo) */
     parts?: SeriesPart[];
+    /** Sea, current and visibility downloaded with the forecast (Open-Meteo; owner's report 2026-11-19: works with the tab hidden) */
+    extra?: Extra;
 }
 
 /** One stretch of a point forecast and where it comes from (2026-11-02: past and longer weather) */
@@ -90,8 +93,10 @@ export interface WxPoint {
     /** Wind sea direction FROM and period, from Windy's wind-wave layer (owner, 2026-10-28) */
     seaDir?: number | null;
     seaPeriod?: number | null;
-    /** True when the sea values come from Windy's wind-wave layer */
+    /** True when the sea is real sea data (height, period, direction): Windy's wind-wave layer, or Open-Meteo marine
+     *  (since 2026-11-19); false / missing = worked out from SWH and the swells. `seaSrc` says which. */
     seaWindy?: boolean;
+    seaSrc?: 'windy' | 'openmeteo';
     /** Wave power (energy flux), kW per metre of wave front */
     powerKw?: number | null;
     /** True when the power was worked out here (0.49 × SWH² × period) rather than sent by Windy */
@@ -228,6 +233,9 @@ export function sampleSeries(s: WxSeries, t: number): WxPoint | null {
     const sw2 = wv(s.swell2);
     const wwH = wv(s.windWave);
     const visM = valueAt(s.ts, s.vis, t, 'lin');
+    const exSea = extraAt(s.extra, 'seaH', t);
+    const exVis = extraAt(s.extra, 'visM', t);
+    const exCur = extraAt(s.extra, 'curKn', t);
     if (!valid(wind) && !valid(hs) && !valid(pressure)) {
         // Inside the time range but no values at all: past the end of the usable forecast.
         return null;
@@ -250,8 +258,10 @@ export function sampleSeries(s: WxSeries, t: number): WxPoint | null {
         sw2Dir: wd(s.swell2Dir),
         sw2Period: wv(s.swell2Period),
         seaHs: valid(wwH) ? wwH : valid(hs) ? Math.sqrt(Math.max(0, hs * hs - (sw1 ?? 0) ** 2 - (sw2 ?? 0) ** 2)) : null,
-        ...(valid(wwH) ? { seaDir: wd(s.windWaveDir), seaPeriod: wv(s.windWavePeriod) } : {}),
-        ...(valid(visM) ? { visNm: visM / 1852 } : {}),
+        ...(valid(wwH) ? { seaDir: wd(s.windWaveDir), seaPeriod: wv(s.windWavePeriod), seaWindy: true, seaSrc: 'openmeteo' as const } : {}),
+        ...(!valid(wwH) && valid(exSea) ? { seaHs: exSea, seaDir: extraAt(s.extra, 'seaDir', t, true), seaPeriod: extraAt(s.extra, 'seaPer', t), seaWindy: true, seaSrc: 'openmeteo' as const } : {}),
+        ...(valid(visM) ? { visNm: visM / 1852 } : valid(exVis) ? { visNm: exVis / 1852 } : {}),
+        ...(valid(exCur) ? { currentKn: exCur, currentSet: extraAt(s.extra, 'curDir', t, true) } : {}),
         rhPct: valueAt(s.ts, s.rh, t, 'lin'),
         ...wavePower(wv(s.wavesPower), hs, wv(s.wavesPeriod)),
         airTempC: valid(temp) ? (temp > 150 ? temp - 273.15 : temp) : null,
@@ -498,7 +508,7 @@ export function otherSourceAt(s: WxSeries | null | undefined, t: number): Series
 /** Windy's sea (wind waves) read from the map, nearest in time, put into the weather (owner, 2026-10-28) */
 export function withWindySea(wx: WxPoint, sweep: Map<number, Partial<WxPoint>> | undefined, t: number): WxPoint {
     const s = nearestSweep(sweep, t, 'seaWindy');
-    return s && s.seaWindy ? { ...wx, seaHs: s.seaHs ?? wx.seaHs, seaDir: s.seaDir ?? null, seaPeriod: s.seaPeriod ?? null, seaWindy: true } : wx;
+    return s && s.seaWindy ? { ...wx, seaHs: s.seaHs ?? wx.seaHs, seaDir: s.seaDir ?? null, seaPeriod: s.seaPeriod ?? null, seaWindy: true, seaSrc: 'windy' } : wx;
 }
 
 /** Map-layer reading nearest in time to t (within `maxH` hours), or null. */
@@ -604,7 +614,11 @@ export function buildRows(
         const speedKn = stopped ? 0 : tp && !tp.stopped && tp.stw > 0 ? tp.stw : leg ? leg.stw : 0;
         const s = nearestSeries(series, pos);
         let wx = s ? sampleSeries(s, t) : null;
-        if (wx && sweep?.has(t)) wx = { ...wx, ...sweep.get(t) };
+        if (wx && sweep?.has(t)) {
+            // Windy's own map readings take over, but a value it could not read never wipes the downloaded one
+            const sw = Object.fromEntries(Object.entries(sweep.get(t) ?? {}).filter(([, v]) => v != null)) as Partial<WxPoint>;
+            wx = { ...wx, ...sw, ...(sw.seaWindy ? { seaSrc: 'windy' as const } : {}) };
+        }
         if (wx && wx.currentKn == null) {
             const c = nearestSweep(sweep, t, 'currentKn');
             if (c) wx = { ...wx, currentKn: c.currentKn, currentSet: c.currentSet };
@@ -613,7 +627,8 @@ export function buildRows(
             const v = nearestSweep(sweep, t, 'visNm');
             if (v) wx = { ...wx, visNm: v.visNm };
         }
-        if (wx && !wx.seaWindy) wx = withWindySea(wx, sweep, t);
+        // Windy's own map reading (when done) takes over from the downloaded sea
+        if (wx && wx.seaSrc !== 'windy') wx = withWindySea(wx, sweep, t);
         const beyond = !!s && !wx;
         const limits = wx ? checkLimits(wx, pos.course, th) : [];
         const resonance = wx
@@ -666,4 +681,67 @@ function nearestSeries(series: WxSeries[], pos: { lat: number; lon: number }): W
 export function weatherAt(series: WxSeries[], pos: { lat: number; lon: number }, t: number): WxPoint | null {
     const s = nearestSeries(series, pos);
     return s ? sampleSeries(s, t) : null;
+}
+
+/**
+ * Forecast points leg by leg (owner, 2026-11-19: "every time i am changing some waypoint ... i need to check the
+ * weather again"): each leg gets its own evenly spaced points from its start, so after an edit the legs that did not
+ * change give exactly the same points and their forecasts come from memory; only the changed legs are fetched.
+ * Spacing in fixed steps (30, 45, 60, 90, 120, 180 nm) so the total number of points stays at or under `maxPoints`.
+ */
+export function routePointsByLeg(plan: PlanCalc, maxPoints = 120): { lat: number; lon: number }[] {
+    if (!plan.legs.length) return [];
+    const spacing = [30, 45, 60, 90, 120, 180].find(s => plan.legs.reduce((a, l) => a + Math.max(1, Math.ceil(l.distNm / s)), 1) <= maxPoints) ?? 240;
+    const out: { lat: number; lon: number }[] = [];
+    const snap = (v: number) => Math.round(v * 20) / 20; // 0.05°: a waypoint nudged a little still gives the same points
+    plan.legs.forEach((leg, li) => {
+        const n = Math.max(1, Math.ceil(leg.distNm / spacing));
+        for (let k = li === 0 ? 0 : 1; k <= n; k++) {
+            const p = leg.geom.pointAt((leg.distNm * k) / n);
+            const q = { lat: snap(p.lat), lon: snap(((((p.lon + 180) % 360) + 360) % 360) - 180) };
+            if (!out.some(o => o.lat === q.lat && o.lon === q.lon)) out.push(q);
+        }
+    });
+    return out;
+}
+
+/** An area for the weather (owner, 2026-11-19): north / south latitude, east / west longitude */
+export interface WxArea {
+    n: number;
+    s: number;
+    /** West and east longitude; west may be greater than east across the date line */
+    w: number;
+    e: number;
+}
+
+/** Width of an area in degrees of longitude (across the date line too) */
+export const areaWidth = (a: WxArea): number => (a.e >= a.w ? a.e - a.w : a.e + 360 - a.w);
+
+/**
+ * Forecast points on a grid over the area: 0.5°, 1°, 2° or 3° apart, the finest that keeps to `maxPoints`
+ * (each point is one forecast download). Null when the area is not valid.
+ */
+export function areaGrid(a: WxArea, maxPoints = 300): { step: number; points: { lat: number; lon: number }[] } | null {
+    if (![a.n, a.s, a.w, a.e].every(v => isFinite(v)) || a.n <= a.s || a.n > 90 || a.s < -90 || Math.abs(a.w) > 180 || Math.abs(a.e) > 180) return null;
+    const width = areaWidth(a);
+    if (width <= 0 || width > 360) return null;
+    const height = a.n - a.s;
+    const count = (st: number) => (Math.floor(height / st) + 1) * (Math.floor(width / st) + 1);
+    const step = [0.5, 1, 2, 3].find(st => count(st) <= maxPoints);
+    if (step == null) return null;
+    const points: { lat: number; lon: number }[] = [];
+    for (let la = a.s; la <= a.n + 1e-9; la += step) {
+        for (let k = 0; k * step <= width + 1e-9; k++) {
+            const lo = ((((a.w + k * step + 180) % 360) + 360) % 360) - 180;
+            points.push({ lat: Math.round(la * 100) / 100, lon: Math.round(lo * 100) / 100 });
+        }
+    }
+    return { step, points };
+}
+
+/** Is a point inside the area (longitudes across the date line too)? */
+export function inArea(a: WxArea, lat: number, lon: number): boolean {
+    if (lat > a.n || lat < a.s) return false;
+    const d = (((lon - a.w) % 360) + 360) % 360;
+    return d <= areaWidth(a);
 }

@@ -1,6 +1,6 @@
 <div class="plugin__mobile-header">{title}</div>
 <section class="plugin__content pp g-shell" data-g-dim={$panelDim ? '' : null}>
-    <div class="plugin__title plugin__title--chevron-back g-head" on:click={() => bcast.emit('rqstOpen', 'menu')}>
+    <div class="plugin__title plugin__title--chevron-back g-head" bind:this={headEl} on:click={() => bcast.emit('rqstOpen', 'menu')}>
         <span class="g-head__name">{shortName}</span>
         <span class="g-head__ver" title="Plugin version">v{config.version}</span>
         <span class="g-head__tools" on:click|stopPropagation>
@@ -27,13 +27,17 @@
         </div>
     {/if}
     <UpdateBanner />
-    <nav class="g-nav" role="tablist">
+    <VoyageStrip />
+    <!-- phones (owner's report, 2026-11-19): this bar stays at the top of the panel while it scrolls, so another section
+         is always one press away; pressing a section (also the one already open) goes to its start -->
+    <nav class="g-nav" class:g-nav--away={help} role="tablist" bind:this={navEl}>
         {#each SECTIONS as t}
-            <button role="tab" class="g-nav__item" class:is-on={tab === t.id} aria-selected={tab === t.id} on:click={() => openTab(t.id)} title={t.title}>
+            <button role="tab" class="g-nav__item" data-g="nav-{t.id}" class:is-on={tab === t.id && !help} aria-selected={tab === t.id && !help} on:click={() => navPress(t.id)} title={t.title}>
                 <Icon name={t.icon} size={19} /><span>{t.label}</span>
             </button>
         {/each}
     </nav>
+    <div class="g-start" bind:this={startEl} />
     {#if help}
         <!-- help shown in place of the section (0.23.3: no overlay, so Windy's own panel scrolling is untouched) -->
     {:else if tab === 'route'}
@@ -50,9 +54,21 @@
     {:else if tab === 'settings'}
         <SettingsTab />
     {:else if tab === 'weather'}
-        <WeatherTab />
+        <div class="g-seg g-seg--4" role="radiogroup" aria-label="Weather views">
+            {#each WEATHER_SEGS as s}<button role="radio" class="g-seg__opt" class:is-on={weatherSeg === s.id} aria-checked={weatherSeg === s.id} on:click={() => setWeatherSeg(s.id)} title={s.title}><Icon name={s.icon} size={15} />{s.label}</button>{/each}
+        </div>
+        {#if weatherSeg === 'port'}
+            <PortWeather />
+        {:else if weatherSeg === 'tides'}
+            <TidePanel />
+        {:else}
+            <WeatherTab view={weatherSeg === 'charts' ? 'charts' : 'route'} />
+        {/if}
     {:else if tab === 'snapshot'}
-        <SnapshotTab onSettings={() => openTab('settings')} />
+        <div class="g-seg" role="radiogroup" aria-label="Motion views">
+            {#each MOTION_SEGS as s}<button role="radio" class="g-seg__opt" class:is-on={motionSeg === s.id} aria-checked={motionSeg === s.id} on:click={() => setMotionSeg(s.id)} title={s.title}><Icon name={s.icon} size={15} />{s.label}</button>{/each}
+        </div>
+        <SnapshotTab mode={motionSeg} />
     {:else if tab === 'optimise'}
         <div class="g-seg" role="radiogroup" aria-label="Optimise views">
             {#each OPT_SEGS as s}<button role="radio" class="g-seg__opt" class:is-on={optSeg === s.id} aria-checked={optSeg === s.id} on:click={() => setOptSeg(s.id)} title={s.title}><Icon name={s.icon} size={15} />{s.label}</button>{/each}
@@ -60,17 +76,18 @@
         {#if optSeg === 'compare'}
             <CompareTab />
         {:else}
-            <OptimiseTab mode={optSeg} onSettings={() => openTab('settings')} />
+            <OptimiseTab mode={optSeg} />
         {/if}
     {/if}
     {#if help}
         <div class="g-drawer" role="dialog" aria-label="Help">
             <div class="g-drawer__head">
+                <button type="button" class="g-btn g-back" on:click={closeHelp} title="Close Help and go back to {SECTIONS.find(t => t.id === tab)?.label ?? 'the plugin'}"><Icon name="back" size={18} /> Back</button>
                 <b>Help</b>
                 <div class="g-seg g-drawer__seg">
                     {#each HELP_SEGS as s}<button class="g-seg__opt" class:is-on={helpSeg === s.id} on:click={() => openHelp(s.id)}><Icon name={s.icon} size={15} />{s.label}</button>{/each}
                 </div>
-                <button class="g-ibtn" aria-label="Close help" title="Close" on:click={() => (help = false)}><Icon name="x" /></button>
+                <button class="g-ibtn g-drawer__x" aria-label="Close help" title="Close" on:click={closeHelp}><Icon name="x" /></button>
             </div>
             <div class="g-drawer__body">
                 {#if helpSeg === 'guide'}
@@ -81,17 +98,21 @@
                     <Feedback />
                 {:else}
                     <div class="g-card">
-                        <div class="g-card__head"><span class="g-card__title">{config.title}</span></div>
+                        <div class="g-card__head"><span class="g-card__title">{config.title}</span><Gear host="about" chips={[{ id: 'updates' }]} /></div>
+                        <SettingsFold host="about" />
                         <p>Version <b>{config.version}</b> · by {config.author}</p>
                         <div class="g-row">
                             <button class="g-btn" disabled={$updateBusy} on:click={() => checkForUpdates(true)}><Icon name="refresh" size={15} /> Check for updates</button>
                             {#if $updateStatus}<span class="pp-note">{$updateStatus}</span>{/if}
                         </div>
-                        <p class="pp-note">Install link and steps, automatic checks, "What's new": Settings → Updates.</p>
+                        <p class="pp-note">Install link and steps, automatic checks: the gear above (or Settings → Updates). "What's new" appears at the top of the panel after an update.</p>
                     </div>
                 {/if}
             </div>
         </div>
+    {/if}
+    {#if $phone}
+        <div class="g-totop"><button type="button" class="g-btn g-btn--ghost g-btn--s" on:click={toTop}><Icon name="arrowUp" size={14} /> Top</button></div>
     {/if}
 </section>
 {#if $work}
@@ -99,6 +120,9 @@
 {/if}
 {#if graphsShown && layer}
     <GraphPanel />
+{/if}
+{#if $setWin && !$phone}
+    <SettingsWin />
 {/if}
 {#if $cursorBar.on && layer && !$phone}
     <CursorBar />
@@ -122,11 +146,15 @@
         motion={nowWx && now ? motionAt(nowWx, now.course, nowStw ?? 0, $vessel) : null}
         onClose={() => showShipBox.set(false)}
         onNow={goToNow}
-        onSettings={() => {
-            openSettingsSection('map');
-            openSettingsSection('polar');
-            tab = 'settings';
-        }}
+        onSettings={anchor =>
+            openSetWin(
+                [
+                    { id: 'map', part: 'ships', label: 'Ship symbols & colours' },
+                    { id: 'polar', label: 'Polar diagram' },
+                    { id: 'map', part: 'windows', label: 'Windows' },
+                ],
+                anchor,
+            )}
     />
 {/if}
 
@@ -134,7 +162,7 @@
     import bcast from '@windy/broadcast';
     import store from '@windy/store';
     import { showPressureLines } from './windy/weatherJobs';
-    import { onDestroy, onMount } from 'svelte';
+    import { onDestroy, onMount, tick } from 'svelte';
     import { get } from 'svelte/store';
 
     import config from './pluginConfig';
@@ -181,7 +209,7 @@
     import { openMenu, closeMenu } from './windy/contextMenu';
     import { waypointsOnLand } from './windy/land';
     import { newWaypoint, positionAt, projectOnLegs, shipPositions, type ShipPosition } from './lib/model';
-    import { fmtTime } from './lib/format';
+    import { fmtLat, fmtLon, fmtTime } from './lib/format';
     import RouteTab from './ui/RouteTab.svelte';
     import SettingsTab, { openSettingsSection } from './ui/SettingsTab.svelte';
     import WeatherTab from './ui/WeatherTab.svelte';
@@ -207,8 +235,21 @@
     import { cursorBar } from './state';
     import { logEvent } from './lib/activityLog';
     import GraphPanel from './ui/GraphPanel.svelte';
+    import PortWeather from './ui/PortWeather.svelte';
+    import { startAreaLayer, stopAreaLayer } from './windy/areaLayer';
+    import { startAutoWeather, stopAutoWeather } from './windy/weatherJobs';
+    import VoyageStrip from './ui/VoyageStrip.svelte';
+    import Gear from './ui/base/Gear.svelte';
+    import SettingsFold from './ui/settings/SettingsFold.svelte';
+    import SettingsWin from './ui/settings/SettingsWin.svelte';
+    import { closeFold, closeSetWin, openSetWin, setWin } from './ui/settings/foldState';
+    import { setNavHandler, type NavTarget } from './ui/nav';
+    import { startMapToolNote, stopMapToolNote } from './windy/mapToolNote';
+    import TidePanel from './ui/TidePanel.svelte';
+    import { cancelPick, hideMarker, loadPlace, pickAt, placeData, placePoint, setPoint, showMarker } from './windy/placeJob';
     import { graphState, phoneGraphOpen, toggleGraphs } from './ui/graphState';
     import { phone } from './state';
+    import { bringToTop, watchSafeTop } from './ui/phoneSafe';
     $: graphsShown = $phone ? $phoneGraphOpen : $graphState.open;
     import { goToNow } from './windy/nowTime';
 
@@ -219,7 +260,7 @@
         { id: 'route', label: 'Route', icon: 'route', title: 'Waypoints, speed and fuel, distances' },
         { id: 'weather', label: 'Weather', icon: 'weather', title: 'Forecast along the route, table, charts on the map' },
         { id: 'snapshot', label: 'Motion', icon: 'motion', title: 'Polar diagram: IMO warnings, roll and pitch at the map time' },
-        { id: 'optimise', label: 'Optimise', icon: 'bolt', title: 'Safe speed plan, route optimisation, compare routes' },
+        { id: 'optimise', label: 'Optimise', icon: 'bolt', title: 'Safe speed and course plan, route optimisation, compare routes' },
         { id: 'settings', label: 'Settings', icon: 'gear', title: 'All settings' },
     ];
     const ROUTE_SEGS = [
@@ -228,10 +269,32 @@
         { id: 'distances', label: 'Distances', icon: 'anchor' },
     ] as const;
     const OPT_SEGS = [
-        { id: 'speed', label: 'Speed only', icon: 'lifebuoy', title: 'Keep my track, avoid bad weather by changing the speed' },
+        { id: 'speed', label: 'Speed & course', icon: 'lifebuoy', title: 'Avoid bad weather by changing the speed, stopping, or altering course for a while' },
         { id: 'route', label: 'Change the track', icon: 'bolt', title: 'Route optimisation: least fuel within your limits' },
         { id: 'compare', label: 'Compare', icon: 'compare', title: 'Compare routes side by side' },
     ] as const;
+    // Port weather and tides (owner, 2026-11-13) as views of the Weather section (windy/notes/ui-reimagine-2026-11.md)
+    const WEATHER_SEGS = [
+        { id: 'route', label: 'Along route', icon: 'route', title: 'The forecast along your route, the weather table, charts on the map' },
+        { id: 'port', label: 'Port weather', icon: 'anchor', title: 'Any place: weather every hour for 7 days, tide, sun and moon; PDF' },
+        { id: 'tides', label: 'Tides', icon: 'tide', title: 'Any place: tide graph, high and low waters, hourly heights; PDF' },
+        { id: 'charts', label: 'Map charts', icon: 'layers', title: 'Charts on the map: wave chart in your colours, roll and pitch lines, seamarks, ports, canals' },
+    ] as const;
+    const MOTION_SEGS = [
+        { id: 'plan', label: 'At the map time', icon: 'clock', title: "The ship on the plan at the time of Windy's slider" },
+        { id: 'live', label: 'Live (GPS)', icon: 'crosshair', title: 'Where this phone or computer is now, with the forecast there' },
+    ] as const;
+    let motionSeg: (typeof MOTION_SEGS)[number]['id'] = 'plan';
+    function setMotionSeg(id: typeof motionSeg) {
+        motionSeg = id;
+        logEvent('tab', `Motion view: ${id}`);
+    }
+    let weatherSeg: (typeof WEATHER_SEGS)[number]['id'] = 'route';
+    function setWeatherSeg(id: typeof weatherSeg) {
+        weatherSeg = id;
+        logEvent('tab', `Weather view: ${id}`);
+        if ((id === 'port' || id === 'tides') && !get(placeData) && get(placePoint)) loadPlace().catch(() => {});
+    }
     const HELP_SEGS = [
         { id: 'guide', label: 'Guide', icon: 'book' },
         { id: 'usage', label: 'Usage', icon: 'heat' },
@@ -268,11 +331,62 @@
     }
     function openHelp(id?: typeof helpSeg) {
         if (id) helpSeg = id;
-        else if (help) return void (help = false);
+        else if (help) return closeHelp();
+        const was = help;
         help = true;
         logEvent('tab', `Help: ${helpSeg}`);
+        if (!was) toStart(true);
+    }
+    function closeHelp() {
+        help = false;
+        toStart();
+    }
+    // ---- phones: the way back (owner's report, 2026-11-19) ----
+    let navEl: HTMLElement | null = null;
+    let startEl: HTMLElement | null = null;
+    /** A section pressed in the bar: open it and, on a phone, show it from its start */
+    function navPress(id: string) {
+        openTab(id);
+        toStart();
+    }
+    /**
+     * Phones: bring the start of the section (or Help) to the top of the panel, under the section bar. Only when the
+     * panel is already scrolled past it, unless `always` (Help opens far below the header on a small screen).
+     */
+    async function toStart(always = false) {
+        if (!get(phone)) return;
+        try {
+            await tick();
+            const a = startEl?.getBoundingClientRect();
+            const n = navEl?.getBoundingClientRect();
+            if (!a || !n) return;
+            if (always || a.top < n.bottom - 1) bringToTop(startEl);
+        } catch {
+            /* stays where it is */
+        }
+    }
+    /** Jumps asked for by other parts of the pane ("All settings" in a fold-out, the voyage strip, "Used in" links) */
+    function navTo(t: NavTarget) {
+        if (t.tab === 'help') return openHelp((t.seg as typeof helpSeg) ?? 'guide');
+        if (t.tab === 'settings') {
+            if (t.settings) openSettingsSection(t.settings, true);
+            return openTab('settings');
+        }
+        openTab(t.tab);
+        if (t.tab === 'route' && t.seg) setRouteSeg(t.seg as typeof routeSeg);
+        if (t.tab === 'weather' && t.seg) setWeatherSeg(t.seg as typeof weatherSeg);
+        if (t.tab === 'optimise' && t.seg) setOptSeg(t.seg as typeof optSeg);
+        if (t.tab === 'snapshot' && t.seg) setMotionSeg(t.seg as typeof motionSeg);
     }
     let layer: RouteLayer | null = null;
+    let headEl: HTMLElement | null = null;
+    function toTop() {
+        try {
+            headEl?.scrollIntoView({ block: 'start' });
+        } catch {
+            /* stays where it is */
+        }
+    }
 
     const onTs = (ts: number) => timelineTs.set(ts);
     /**
@@ -281,7 +395,14 @@
      */
     const keyGuard = (e: KeyboardEvent) => {
         const t = e.target as HTMLElement | null;
-        if (t?.closest?.('input, textarea, select, [contenteditable="true"]') && t.closest('.pp, .sb')) e.stopPropagation();
+        if (t?.closest?.('input, textarea, select, [contenteditable="true"]') && t.closest('.pp, .sb')) {
+            // Esc in a box of a settings fold-out or of the settings window closes that (the key still does not reach Windy)
+            if (e.type === 'keydown' && e.key === 'Escape') {
+                if (t.closest('.g-fold')) closeFold();
+                else if (t.closest('.g-setwin')) closeSetWin();
+            }
+            e.stopPropagation();
+        }
     };
     const onProduct = (p: unknown) => mapProduct.set(typeof p === 'string' ? p : '');
 
@@ -308,6 +429,22 @@
         landTimer = setTimeout(() => waypointsOnLand(wps).then(s => landUids.set(s)), 700);
     }
 
+    function appendWaypoint(lat: number, lon: number) {
+        updateRoute(r => {
+            const wp = newWaypoint(lat, lon, r.defaultLegType);
+            r.waypoints.push(wp);
+            selectedUids.set([wp.uid]);
+        });
+    }
+    /** Right-click on the map → Port weather / Tides for that point (never changes the route) */
+    function placeHere(lat: number, lon: number, view: 'port' | 'tides') {
+        setPoint(lat, lon);
+        loadPlace().catch(() => {});
+        openTab('weather');
+        weatherSeg = view;
+        logEvent('click', `Right-click on the map: ${view === 'port' ? 'Port weather' : 'Tides'} here`);
+    }
+
     function fit() {
         layer?.fitTo(get(route));
     }
@@ -327,12 +464,18 @@
             }
         };
         safe('Look', () => (uninstallTheme = installTheme()));
+        safe('Phone screen', () => (stopSafeTop = watchSafeTop()));
         safe('Activity log', startLogging);
         safe('Wave chart', startWaveChart);
         safe('Roll chart', startRollChart);
         safe('Nautical charts', startChartLayers);
         safe('Ports and canals', startPlaces);
         safe('Range rings', startRangeRings);
+        safe('Place marker', showMarker);
+        safe('Weather area on the map', startAreaLayer);
+        safe('Weather by itself', startAutoWeather);
+        safe('Jumps inside the panel', () => setNavHandler(navTo));
+        safe('Map tool note', startMapToolNote);
         layer = new RouteLayer({
             onMove(uid, lat, lon) {
                 updateRoute(r => {
@@ -353,13 +496,12 @@
             onShipClick(time) {
                 store.set('timestamp', time);
             },
+            pick(lat, lon) {
+                return pickAt(lat, lon);
+            },
             onMapClick(lat, lon) {
                 if (!get(addMode)) return;
-                updateRoute(r => {
-                    const wp = newWaypoint(lat, lon, r.defaultLegType);
-                    r.waypoints.push(wp);
-                    selectedUids.set([wp.uid]);
-                });
+                appendWaypoint(lat, lon);
             },
             onWaypointMenu(uid, x, y) {
                 const r = get(route);
@@ -374,12 +516,21 @@
                         ? [{ label: 'Insert waypoint after this one', action: () => { const a = r.waypoints[i]; const b = r.waypoints[i + 1]; insertWaypoint(i + 1, (a.lat + b.lat) / 2, a.lon + (((b.lon - a.lon + 540) % 360) - 180) / 2); } }]
                         : []),
                     { label: sel.includes(uid) ? 'Unselect' : 'Add to selection', action: () => selectWp(uid, true) },
+                    { label: `Port weather at WP${i + 1}`, action: () => placeHere(r.waypoints[i].lat, r.waypoints[i].lon, 'port') },
+                    { label: `Tides at WP${i + 1}`, action: () => placeHere(r.waypoints[i].lat, r.waypoints[i].lon, 'tides') },
                 ];
                 openMenu(x, y, `WP${i + 1}${r.waypoints[i].name ? ' · ' + r.waypoints[i].name : ''}`, items);
             },
             onLegMenu(beforeIndex, lat, lon, x, y) {
                 openMenu(x, y, `Leg WP${beforeIndex} → WP${beforeIndex + 1}`, [
                     { label: 'Insert waypoint here', action: () => insertWaypoint(beforeIndex, lat, lon) },
+                ]);
+            },
+            onWaterMenu(lat, lon, x, y) {
+                openMenu(x, y, `${fmtLat(lat, 1)} ${fmtLon(lon, 1)}`, [
+                    { label: 'Port weather here', action: () => placeHere(lat, lon, 'port') },
+                    { label: 'Tides here', action: () => placeHere(lat, lon, 'tides') },
+                    { label: 'Add waypoint here (at the end of the route)', action: () => appendWaypoint(lat, lon) },
                 ]);
             },
             legClickInserts: () => get(legClickInserts),
@@ -399,6 +550,8 @@
 
     let uninstallTheme: (() => void) | null = null;
     onDestroy(() => uninstallTheme?.());
+    let stopSafeTop: (() => void) | null = null;
+    onDestroy(() => stopSafeTop?.());
     onDestroy(() => {
         stopLogging();
         stopWaveChart();
@@ -406,6 +559,22 @@
         stopChartLayers();
         stopPlaces();
         stopRangeRings();
+        try {
+            stopAutoWeather();
+            stopAreaLayer();
+        } catch {
+            /* gone */
+        }
+        try {
+            cancelPick();
+            hideMarker();
+            setNavHandler(null);
+            stopMapToolNote();
+            closeFold(false);
+            closeSetWin();
+        } catch {
+            /* gone */
+        }
         closeMenu();
         store.off('timestamp', onTs);
         for (const k of ['keydown', 'keyup', 'keypress']) window.removeEventListener(k, keyGuard as EventListener, true);
@@ -485,6 +654,11 @@
     /* no 'position' here (0.23.3): Windy positions and scrolls this panel itself; overriding it stopped the scrolling */
     .g-shell {
         padding-bottom: 16px;
+    }
+    .g-totop {
+        display: flex;
+        justify-content: center;
+        margin-top: 4px;
     }
     .g-head {
         display: flex !important;
@@ -800,7 +974,7 @@
         border-radius: 8px;
         padding: 6px 8px;
         font: 11px sans-serif;
-        pointer-events: none;
+        pointer-events: auto; /* floating window: move, resize, minimise, original size, close */
     }
     :global(.pp-wave-legend .wl-title) {
         font-weight: bold;
@@ -845,7 +1019,7 @@
         border-radius: 8px;
         padding: 6px 8px;
         font: 11px sans-serif;
-        pointer-events: none;
+        pointer-events: auto; /* floating window: move, resize, minimise, original size, close */
     }
     :global(.pp-roll-legend .rk-title) {
         font-weight: bold;
@@ -906,7 +1080,7 @@
         font: bold 10px sans-serif;
         text-shadow: 0 0 2px #000, 0 0 2px #000;
     }
-    @media (max-width: 600px) {
+    @media (max-width: 600px), (max-height: 500px) and (pointer: coarse) {
         /* phones: Windy's own title bar already names the plugin; keep the warning, drop the tagline */
         .g-tagline {
             display: none;

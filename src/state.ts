@@ -370,11 +370,13 @@ export const panelDim = persisted<boolean>('panelDim', false);
 
 /**
  * Phone screen (owner, 2026-11-02): Windy shows plugins full screen on phones, so the floating ship and graph
- * windows would cover the panel. True when the screen is 600 px wide or less.
+ * windows would cover the panel. True when the screen is 600 px wide or less, or (phone audit, 2026-11-19) a touch
+ * screen 500 px high or less: a phone held sideways. The same test is used in the stylesheets.
  */
+export const PHONE_SCREEN = '(max-width: 600px), (max-height: 500px) and (pointer: coarse)';
 export const phone = readable(false, set => {
     try {
-        const mq = window.matchMedia('(max-width: 600px)');
+        const mq = window.matchMedia(PHONE_SCREEN);
         set(mq.matches);
         const on = () => set(mq.matches);
         mq.addEventListener?.('change', on);

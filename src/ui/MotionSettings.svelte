@@ -2,6 +2,7 @@
 <div class="pp-note g-hl">Used for the roll and pitch estimate. {#if missing}<b class="pp-err">{missing}.</b>{/if} <Hint title="Roll and pitch estimate"><p>Used for the <b>roll and pitch estimate</b> along the route (weather table, ship window, Polar tab, optimiser). Also needs
     LBP, breadth, drafts and GM (Ship particulars). {#if missing}<b>{missing}.</b>{/if}</p></Hint></div>
 
+{#if !part || part === 'period'}
 <div class="rp-box">
     <h5>Roll period: the most important number for the roll estimate</h5>
     <div class="rp-now">
@@ -39,7 +40,8 @@
     >
     <p class="pp-note">Windy does not say which wave period it gives; ECMWF's are mean periods, hence the default. Change only if you know better.</p>
 </div>
-
+{/if}
+{#if !part || part === 'keels'}
 <h5>Bilge keels (one side; the other side is taken as the same)</h5>
 <p class="pp-note">One row per section: a keel in 3 parts = 3 rows. Breadth = how far the plate stands out from the hull.</p>
 <table class="bk">
@@ -61,7 +63,8 @@
     <button class="pp-btn pp-btn--ghost small" disabled={!sel.size} on:click={del}>Delete selected ({sel.size})</button>
     {#if keels.length}<span class="pp-note">Total {totalLen.toFixed(1)} m per side. Tick boxes or Ctrl/⌘-click rows to select several.</span>{/if}
 </div>
-
+{/if}
+{#if !part || part === 'marks'}
 <div class="grid">
     <label title="Height of the centre of gravity above the keel, from the loading computer. Empty = estimated from breadth, draft and GM"
         >KG (m) <input type="number" step="0.01" value={$vessel.kg ?? ''} placeholder="auto" on:change={e => setNum('kg', e)} /></label>
@@ -78,8 +81,9 @@
     <b>likely largest in 3 hours</b>. An <b>estimate</b>: expect roughly ±30–50 % for roll (more near resonance) and ±25 %
     for pitch; trust the trend along the route more than the exact degree. <b>Pitch for waves shorter than about 1.2 ship lengths is probably too low</b> (a limit of the simple method). <b>Parametric roll is not predicted</b>: watch
     the IMO warnings for it. See the Info tab.</p></Hint></div>
-
-<h5>Roll chart on the map (Weather tab → Roll lines for this view)</h5>
+{/if}
+{#if !part || part === 'chart'}
+<h5>Roll chart on the map (Weather → Map charts → Roll lines for this view)</h5>
 <div class="grid">
     <label
         >The lines show
@@ -110,10 +114,12 @@
     plan". <b>Worst heading</b>: the most roll at any course (pale = small roll whatever you do; slower to work out, about
     12 times the work). <b>A course I choose</b>: "what if I steer 045° through this". Speed: the planned speed of the
     nearest leg. It follows Windy's time slider.</p></Hint></div>
-
-<RollObsSettings />
+{/if}
+{#if !part || part === 'observed'}<RollObsSettings />{/if}
 
 <script lang="ts">
+    /** Show only this piece of the group (a gear beside a function); null = all of it */
+    export let part: string | null = null;
     import Hint from './base/Hint.svelte';
     import { onDestroy } from 'svelte';
     import { calibState, motionMissing } from '../lib/motionEstimate';

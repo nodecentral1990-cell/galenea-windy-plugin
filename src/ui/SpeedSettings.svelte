@@ -1,4 +1,5 @@
 <!-- Settings: the owner's RPM / speed / fuel table, weather loss method and currents. -->
+{#if !part || part === 'table'}
 <h5>Your RPM / speed / fuel table</h5>
 <p class="pp-note">Enter RPM, speed in calm water (SiCW), fuel per day and (optional) engine power for a few engine settings. Saved with the ship profile.</p>
 <div class="pp-scroll tw">
@@ -11,14 +12,15 @@
                     <td><input class="num" type="number" step="0.1" value={r.sicw ?? ''} on:change={e => setRow(i, 'sicw', e)} /></td>
                     <td><input class="num" type="number" step="0.1" value={r.fuel ?? ''} on:change={e => setRow(i, 'fuel', e)} /></td>
                     <td><input class="num" type="number" step="10" value={r.powerKw ?? ''} on:change={e => setRow(i, 'powerKw', e)} /></td>
-                    <td><button class="icon" title="Remove" on:click={() => removeRow(i)}>✕</button></td>
+                    <td><button class="icon" title="Remove" on:click={() => removeRow(i)}><Icon name="x" size={13} /></button></td>
                 </tr>
             {/each}
         </tbody>
     </table>
 </div>
-<button class="pp-btn pp-btn--ghost" on:click={addRow}>＋ Add a row</button>
-
+<button class="pp-btn pp-btn--ghost" on:click={addRow}><Icon name="plus" size={14} /> Add a row</button>
+{/if}
+{#if !part || part === 'barred'}
 <h5>RPM the ship must not run at (barred ranges)</h5>
 <div class="pp-note g-hl">Never suggested by the plugin; ⛔ in Speed & fuel. <Hint title="Barred RPM ranges"><p>E.g. the <b>critical / barred speed range</b> (heavy vibration), or RPM where the shaft generator, auxiliary engine or
     boiler cuts in / out. The plugin <b>never suggests these RPM</b> (safe speed plan) and marks a leg planned inside them.</p></Hint></div>
@@ -31,7 +33,7 @@
                     <td><input class="num" type="number" step="1" value={b.from ?? ''} on:change={e => setBarred(i, 'from', e)} /></td>
                     <td><input class="num" type="number" step="1" value={b.to ?? ''} on:change={e => setBarred(i, 'to', e)} /></td>
                     <td><input class="why" list="pp-barred-why" value={b.why} placeholder="e.g. critical: vibration" on:change={e => setBarred(i, 'why', e)} /></td>
-                    <td><button class="icon" title="Remove" on:click={() => removeBarred(i)}>✕</button></td>
+                    <td><button class="icon" title="Remove" on:click={() => removeBarred(i)}><Icon name="x" size={13} /></button></td>
                 </tr>
             {/each}
         </tbody>
@@ -44,8 +46,9 @@
     <option value="Exhaust gas boiler cut-in / cut-out" />
     <option value="Turbocharger / auxiliary blower changeover" />
 </datalist>
-<button class="pp-btn pp-btn--ghost" on:click={addBarred}>＋ Add a barred range</button>
-
+<button class="pp-btn pp-btn--ghost" on:click={addBarred}><Icon name="plus" size={14} /> Add a barred range</button>
+{/if}
+{#if !part || part === 'loss'}
 <h5>Weather loss and currents</h5>
 <div class="grid">
     <label
@@ -68,8 +71,12 @@
         coefficient, condition and ship type (Ship particulars, above). <b>Its coefficients have not yet been checked against the original
         paper: treat it as a rough guide.</b> {#if !$weatherReady}<span class="pp-err">Get the forecast in the Weather tab first.</span>{/if}</p></Hint></div>
 {/if}
+{/if}
 
 <script lang="ts">
+    import Icon from './base/Icon.svelte';
+    /** Show only this piece of the group (a gear beside a function); null = all of it */
+    export let part: string | null = null;
     import Hint from './base/Hint.svelte';
     import type { BarredRpm, SpeedRow } from '../lib/model';
     import { planKey, route, updateRoute, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';

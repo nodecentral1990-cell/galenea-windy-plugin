@@ -12,7 +12,7 @@
     <button class="pp-btn pp-btn--ghost" on:click={() => fileInput.click()}><Icon name="folder" size={15} /> Open route files…</button>
     <input bind:this={fileInput} type="file" accept={IMPORT_ACCEPT} multiple hidden on:change={onFiles} />
     {#if $activeCompareId && entry($activeCompareId)}
-        <button class="pp-btn pp-btn--ghost" on:click={saveBack} title="Copy the route now in the Route tab (with your changes) back into this comparison entry">⤓ Save Route tab changes to "{entry($activeCompareId)?.route.name}"</button>
+        <button class="pp-btn pp-btn--ghost" on:click={saveBack} title="Copy the route now in the Route tab (with your changes) back into this comparison entry"><Icon name="save" size={15} /> Save Route tab changes to "{entry($activeCompareId)?.route.name}"</button>
     {/if}
 </div>
 {#if message}<div class="pp-note" class:pp-err={isError}>{message}</div>{/if}
@@ -48,7 +48,7 @@
                         <td><input type="checkbox" checked={s.show} on:change={e => setShow(s.id, e)} title="Show on the map" /></td>
                         <td class="nowrap">
                             <button class="icon" title="Open in the Route tab to view or edit" on:click|stopPropagation={() => openInRouteTab(s.id)}>Open</button>
-                            <button class="icon" title="Remove from the comparison" on:click|stopPropagation={() => remove([s.id])}>✕</button>
+                            <button class="icon" title="Remove from the comparison" on:click|stopPropagation={() => remove([s.id])}><Icon name="x" size={13} /></button>
                         </td>
                     </tr>
                 {/each}
@@ -83,7 +83,7 @@
         <label class="check" title="Steps Windy's time slider with the currents layer for each route: about 1–2 s per step, so this takes a while">
             <input type="checkbox" bind:checked={withCurrents} /> also read currents (slow)
         </label>
-        <button class="pp-btn pp-btn--ghost" on:click={() => (full = true)}>⤢ Full-size table</button>
+        <button class="pp-btn pp-btn--ghost" on:click={() => (full = true)}><Icon name="expand" size={14} /> Full-size table</button>
     </div>
     {#if progress}<div class="pp-note">{progress}</div>{/if}
 
@@ -93,7 +93,7 @@
 {/if}
 
 {#if full}
-    <Overlay onClose={() => (full = false)}>
+    <Overlay key="comparetable" onClose={() => (full = false)}>
         <svelte:fragment slot="head"><b>Route comparison</b> · {all.length} routes · all times UTC</svelte:fragment>
         <div class="pp-scroll" style="flex:1;min-height:0">
             <CompareTable {summaries} routes={all} {th} big />

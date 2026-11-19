@@ -10,7 +10,7 @@
  #pane .plugin__title{font-size:15px;font-weight:bold;margin-bottom:4px}
  #pane .plugin__mobile-header{display:none}
  /* phones: Windy's "fullscreen" plugin layout (the plugin covers the whole screen) */
- @media (max-width:600px){ #map{right:0} #pane{left:0;right:0;width:auto;z-index:1000} #pane .plugin__mobile-header{display:block;padding:8px;font-weight:bold;background:#222} #pane .plugin__content{top:34px} }
+ @media (max-width:600px){ #map{right:0} #pane{left:0;right:0;width:auto;z-index:1000} #pane .plugin__mobile-header{display:block;padding:8px;font-weight:bold;background:#222;height:34px;box-sizing:border-box;white-space:nowrap;overflow:hidden;text-overflow:ellipsis} #pane .plugin__content{top:34px} }
 </style></head>
 <body><div id="bar">TEST PAGE: stand-in for Windy with FAKE weather. Not Windy, not real data.</div>
 <div id="map"></div><div id="pane"></div>

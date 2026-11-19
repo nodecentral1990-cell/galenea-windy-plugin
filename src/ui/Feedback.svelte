@@ -24,7 +24,7 @@
                 Add technical details (plugin version, browser, screen size). No route, ship or position data is added.
             </label>
             <div class="fb__buttons">
-                <a class="pp-btn" href={mailto} target="_blank" rel="noopener" on:click={sent}>✉ Open in my email</a>
+                <a class="pp-btn" href={mailto} target="_blank" rel="noopener" on:click={sent}><Icon name="mail" size={15} /> Open in my email</a>
                 <button class="pp-btn pp-btn--ghost" on:click={copy}>Copy text</button>
                 <button class="pp-btn pp-btn--ghost" on:click={() => (open = false)}>Cancel</button>
             </div>

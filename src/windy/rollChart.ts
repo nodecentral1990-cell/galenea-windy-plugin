@@ -6,6 +6,7 @@
 // slider moves on). Roll estimate: lib/motions.ts via motionAt (the plugin's own estimate; fine-tuned only if
 // the master switched that on).
 
+import { openSetWin } from '../ui/settings/foldState';
 import { map } from '@windy/map';
 import store from '@windy/store';
 import { get, writable } from 'svelte/store';
@@ -23,6 +24,7 @@ import { fmtRun, sampleSeries, type WxSeries } from '../lib/weather';
 import { plan, vessel, workEnd, workProgress, workStart } from '../state';
 import { fetchSeries, runLimited, waitRedraw } from './forecast';
 import { spacingFor, viewBox, waveColorsSuspended, wrap } from './waveChart';
+import { mapKey, type MapKey } from '../ui/floatWin';
 
 export interface RollChartSettings {
     /** 'sig' = significant roll (as in the table); 'max' = likely biggest in 3 hours */
@@ -358,7 +360,7 @@ async function readSeaInto(points: FieldPoint[], t: number, signal: { cancelled:
         const raw = await Promise.resolve(interp({ lat: p.lat, lon: wrap(p.lon) })).catch(() => null);
         const w = readWave(raw, reading);
         if (Number.isFinite(w.h)) {
-            p.wx = { ...p.wx, seaHs: w.h, seaDir: w.dir, seaPeriod: w.period, seaWindy: true };
+            p.wx = { ...p.wx, seaHs: w.h, seaDir: w.dir, seaPeriod: w.period, seaWindy: true, seaSrc: 'windy' };
             n++;
         }
     }
@@ -376,7 +378,7 @@ function onOverlay(): void {
 
 // ---------- key on the map ----------
 
-let legend: HTMLDivElement | null = null;
+let legend: MapKey | null = null;
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const fmtT = (t: number) => `${new Date(t).toISOString().slice(8, 10)} ${MON[new Date(t).getUTCMonth()]} ${new Date(t).toISOString().slice(11, 16)} UTC`;
 
@@ -389,11 +391,10 @@ const modeText = (s: RollChartSettings) =>
 
 function showLegend(t: number, state: 'working' | 'done', pct: number): void {
     if (!get(rollChartOn)) return;
-    if (!legend) {
-        legend = document.createElement('div');
-        legend.className = 'pp pp-roll-legend';
-        document.body.appendChild(legend);
-    }
+    if (!legend) legend = mapKey('rollkey', 'pp pp-roll-legend', {
+            minW: 220,
+            gear: { title: 'Settings: Roll chart', onClick: w => openSetWin([{ id: 'motion', part: 'chart', label: 'Roll chart' }, { id: 'motion', part: 'marks', label: 'Roll and pitch marks' }], w) },
+        });
     const v = get(vessel);
     const set = get(rollChartSettings);
     const q = set.quantity;
@@ -407,12 +408,13 @@ function showLegend(t: number, state: 'working' | 'done', pct: number): void {
     const cal = calibState(v).applied;
     const info = state === 'working' ? `<div class="rk-work">Working out the ${word}… ${pct} %</div>` : lastInfo ? `<div>${lastInfo.lines ? `${lastInfo.lines} lines` : `No line: the ${word} stays under ${lv[0]}° here`}${lastInfo.max != null ? ` · largest ${lastInfo.max.toFixed(1)}°` : ''}</div>` : '';
     const seaTxt = seaRead > 0 ? `sea read from Windy's wind-wave layer (${seaRead} of ${seaTried} points)` : 'sea worked out from SWH and swells';
-    legend.innerHTML =
-        `<div class="rk-title">${q === 'pitch' ? '🔵 Pitch chart' : '🔴 Roll chart'} · ${fmtT(t)}</div>` +
+    legend.set(
+        `<span class="rk-title">${q === 'pitch' ? '🔵 Pitch chart' : '🔴 Roll chart'} · ${fmtT(t)}</span>`,
         `<div>${set.value === 'max' ? `<b>Likely biggest ${word} in 3 h</b>` : `<b>Significant ${word}</b> (as in the weather table)`}${q === 'roll' ? ', one side' : ''}, ${modeText(set).replace('most roll', `most ${word}`).replace('small roll', `small ${word}`)}.</div>` +
         `<div class="rk-chips">${chips}</div>` +
         info +
-        `<div class="rk-src">Plugin estimate${cal ? ', fine-tuned from your observed rolls' : ''}. Forecast points every ${grid?.step ?? '—'}°, smoothed; ${seaTxt}. ECMWF-WAM${first?.wavesRefTime ? ` run ${fmtRun(first.wavesRefTime)}` : ''}${fetchedAt ? ` · fetched ${new Date(fetchedAt).toISOString().slice(11, 16)} UTC` : ''}. ${q === 'roll' ? 'Parametric roll not included (see the IMO warnings). ' : ''}Guide only.</div>`;
+        `<div class="rk-src">Plugin estimate${cal ? ', fine-tuned from your observed rolls' : ''}. Forecast points every ${grid?.step ?? '—'}°, smoothed; ${seaTxt}. ECMWF-WAM${first?.wavesRefTime ? ` run ${fmtRun(first.wavesRefTime)}` : ''}${fetchedAt ? ` · fetched ${new Date(fetchedAt).toISOString().slice(11, 16)} UTC` : ''}. ${q === 'roll' ? 'Parametric roll not included (see the IMO warnings). ' : ''}Guide only.</div>`,
+    );
     const main = state === 'working' ? `Working out the ${word}… ${pct} %` : lastInfo ? `${q === 'pitch' ? 'Pitch' : 'Roll'} lines shown for ${fmtT(lastInfo.t)}${lastInfo.max != null ? ` · largest ${lastInfo.max.toFixed(1)}°` : ''}` : '';
     rollChartStatus.set([main, notice].filter(Boolean).join(' · '));
 }

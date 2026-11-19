@@ -1,19 +1,20 @@
 <!-- Route optimisation for least fuel within your weather limits (owner, 2026-10-27). -->
 <!-- Two ways (owner, 2026-10-30): change the track (route optimisation) or keep it and change the speed (safe speed plan) -->
 {#if mode === 'speed'}
-    <SpeedPlanPanel {onSettings} />
+    <SpeedPlanPanel />
 {:else}
     <div class="g-card">
     <div class="g-card__head">
         <span class="g-card__title">Change the track (least fuel)</span>
         <span class="g-chip">advisory</span>
         <Hint title="What the optimiser does and does not do" width={360}>
-            <p>Finds the track and the speed on each leg that <b>use the least fuel and still arrive on time</b>, keeping out of your red weather limits (Settings → Weather limits). Method: dynamic programming over a grid of possible tracks (no AI model).</p>
+            <p>Finds the track and the speed on each leg that <b>use the least fuel and still arrive on time</b>, keeping out of your red weather limits (the gear beside this). Method: dynamic programming over a grid of possible tracks (no AI model).</p>
             <p>Weather: ECMWF + ECMWF-WAM forecast; fuel from your speed / fuel table; weather slowing the ship as in the weather table.</p>
             <p><b>Not included: currents, depths, traffic separation, routeing measures.</b> Land is checked on a coarse world map (about 6 nm squares). It does not replace official weather routing.</p>
         </Hint>
-        <div class="g-card__actions"><button class="pp-btn pp-btn--ghost small" on:click={() => openSettings('optimise')} title="Optimisation settings"><Icon name="sliders" size={14} /> Optimisation settings</button></div>
+        <Gear host="opt-track" chips={[{ id: 'optimise', label: 'Optimiser' }, { id: 'limits', label: 'Weather limits' }, { id: 'motion', part: 'marks', label: 'Roll mark' }]} />
     </div>
+    <SettingsFold host="opt-track" />
     <div class="g-status g-status--warn"><Icon name="warn" size={14} /> Check any optimised route on ECDIS before use.</div>
 
     {#if $route.waypoints.length < 2}
@@ -54,7 +55,7 @@
                 <Hint title="Reading the versions" width={360}>
                     <p><b>Your route</b> and the GC / RL / composite versions are sailed at <b>one speed</b> that meets the same arrival time; the first optimised row changes speed leg by leg as found.</p>
                     <p>Fuel = your table's fuel per day × hours, weather included (an estimate). <b>Composite</b> = each leg keeps the rhumb line or great circle you chose for that part of your own route.</p>
-                    <p>Roll / pitch: the largest estimate on the way, for comparison. With a roll mark set (Settings → Roll and pitch) and "keep out of roll above your mark" on (Settings → Route optimisation), the search checks the roll on the route it found, leaves out the places above the mark and searches again (up to 3 times).</p>
+                    <p>Roll / pitch: the largest estimate on the way, for comparison. With a roll mark set and "keep out of roll above your mark" on (both in the gear at the top of this card), the search checks the roll on the route it found, leaves out the places above the mark and searches again (up to 3 times).</p>
                 </Hint>
                 <button class="pp-btn pp-btn--ghost small" on:click={() => (fullTable = true)} title="Show the whole table over the map"><Icon name="expand" size={14} /> Full-size table</button>
             </div>
@@ -62,7 +63,7 @@
             {#if o.res.notes.length}<ul class="notes">{#each o.res.notes as n}<li>{n}</li>{/each}</ul>{/if}
             {#if o.runInfo}<div class="g-prov run"><Icon name="calendar" size={14} /> <span>Weather data: {o.runInfo.air} · waves {o.runInfo.waves} · fetched {o.runInfo.fetched} · {o.points} forecast points over the search area</span></div>{/if}
             {#if fullTable}
-                <Overlay onClose={() => (fullTable = false)}>
+                <Overlay key="optimisetable" onClose={() => (fullTable = false)}>
                     <b slot="head">Optimised routes WP{o.a + 1} → WP{o.b + 1} · times UTC</b>
                     <OptimiseTable full {o} {bestId} {hidden} {stale} onToggle={toggleLine} onTake={take} onCompare={compare} />
                 </Overlay>
@@ -88,10 +89,8 @@
     import SpeedPlanPanel from './SpeedPlanPanel.svelte';
     /** Which part is shown (segments in the Optimise section, 2026-11-02) */
     export let mode: 'route' | 'speed' = 'speed';
-    import { openSettingsSection } from './SettingsTab.svelte';
-
-    /** Opens a Settings group (the plugin switches to the Settings tab) */
-    export let onSettings: (() => void) | null = null;
+    import Gear from './base/Gear.svelte';
+    import SettingsFold from './settings/SettingsFold.svelte';
 
     let a = 0;
     let b = Math.max(1, $route.waypoints.length - 1);
@@ -124,10 +123,6 @@
         const r = $route;
         addToCompare({ ...r, name: `${r.name} (${v.label})`, waypoints: applyVersion(r, o!.a, o!.b, v), voyage: null });
         optStatus.set(`"${v.label}" added to the Compare tab.`);
-    }
-    function openSettings(id: string) {
-        openSettingsSection(id);
-        onSettings?.();
     }
 
 </script>

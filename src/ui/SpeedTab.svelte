@@ -3,14 +3,19 @@
     <span class="g-card__title">Legs: speed, RPM and fuel</span>
     <Hint title="Speed, RPM and fuel">
         <p>Each leg's calm-water speed (SiCW), the RPM and fuel from your RPM / speed / fuel table, the weather loss and (if switched on) the current along the track.</p>
-        <p><b>Amber</b> RPM / fuel = outside your table (extrapolated). <b>⛔</b> = RPM in a range the ship must not run at (Settings → Speed, RPM and fuel). Fuel counts steaming hours only (none while stopped).</p>
+        <p><b>Amber</b> RPM / fuel = outside your table (extrapolated). <b>⛔</b> = RPM in a range the ship must not run at (the gear beside this, Barred RPM). Fuel counts steaming hours only (none while stopped).</p>
         <p>Planning aid only: weather, current and fuel figures are estimates.</p>
     </Hint>
+    <Gear host="speed" chips={SPEED_CHIPS} />
 </div>
+<SettingsFold host="speed" />
 <div class="pp-note set">
     Weather loss: <b>{($route.lossMethod ?? 'manual') === 'kwon' ? 'estimate from the forecast (Kwon, rough)' : 'your allowance per leg'}</b> ·
-    currents <b>{$route.useCurrents ? 'included' : 'not included'}</b> · table: <b>{rows.length} rows</b> (Settings → Speed, RPM and fuel)
+    currents <b>{$route.useCurrents ? 'included' : 'not included'}</b> · table: <b>{rows.length} rows</b>
+    <Gear host="speed-line" line chips={[{ id: 'speed', part: 'loss', label: 'Weather loss and currents' }, { id: 'speed', part: 'table', label: 'RPM / speed / fuel table' }]} />
 </div>
+<SettingsFold host="speed-line" />
+{#if !rows.length}<div class="g-status">No RPM / speed / fuel table yet, so no RPM or fuel figures. <Gear host="speed-line" line chips={[{ id: 'speed', part: 'table', label: 'RPM / speed / fuel table' }]} /></div>{/if}
 {#each $sim.notes as n}<div class="g-status g-status--warn">{n}</div>{/each}
 
 <div class="pp-scroll tw">
@@ -63,12 +68,18 @@
 </div>
 
 <script lang="ts">
+    import Gear from './base/Gear.svelte';
+    import SettingsFold from './settings/SettingsFold.svelte';
     import Hint from './base/Hint.svelte';
     import { fmtTime } from '../lib/format';
     import { plan, route, sim, vessel } from '../state';
     import { barredRange } from '../lib/speed';
 
     $: rows = $vessel.speedTable ?? [];
+    const SPEED_CHIPS = [
+        { id: 'speed', label: 'Speed, RPM and fuel' },
+        { id: 'ship', part: 'particulars', label: 'Ship (propeller pitch, Cb)' },
+    ];
 </script>
 
 <style lang="less">

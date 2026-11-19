@@ -1,6 +1,9 @@
 <!-- Short explanations for mariners: weather models, which to use, data age, words used. -->
 <script lang="ts">
     import { RELEASE_NOTES } from '../lib/releaseNotes';
+    import { SETTINGS_GROUPS } from './settings/registry';
+    import { goScreen } from './nav';
+    import Icon from './base/Icon.svelte';
     let q = '';
     let box: HTMLDivElement;
     // filter the chapters by the search words (open the ones that match)
@@ -19,6 +22,18 @@
     <input class="gd-search" type="search" placeholder="Search the guide" bind:value={q} aria-label="Search the guide" />
 </div>
 <div bind:this={box}>
+
+<details class="gd"><summary>Gears: where is the setting for…?</summary><div class="gd__b">
+<p>A small <b>gear</b> <Icon name="gear" size={14} /> beside a function opens its settings <b>right there</b>, under the card or the line: the table or diagram stays on screen and changes as you change the setting. Close it with <b>Done</b>, the gear again, or <b>Esc</b>. Gears on the ship window, the map keys and the weather bar open one small floating settings window.</p>
+<p><b>The Settings section still has everything</b>, with a search box. "All settings" in a fold-out takes you there, to the same group.</p>
+<table class="tbl">
+    <tr><th>Settings group</th><th>Gear beside it in</th></tr>
+    {#each SETTINGS_GROUPS as g}
+        <tr><td><b>{g.title}</b><br /><span class="pp-note">{g.hint}</span></td><td>{#each g.usedIn as u, i}{i ? ' · ' : ''}<button type="button" class="gd-link" on:click={() => goScreen({ tab: u.tab, seg: u.seg })}>{u.label}</button>{/each}</td></tr>
+    {/each}
+</table>
+<p class="pp-note">On the map: right-click on open water for port weather, tides or a waypoint there. While a click on the map does something (adding waypoints, picking a place) a note at the top of the map says so; Esc stops it.</p>
+</div></details>
 
 
 <details class="gd"><summary>Weather models (Windy's model menu: ECMWF, GFS, ICON …)</summary><div class="gd__b"><p class="pp-note">A weather model is a computer forecast made by a national weather service. Windy shows several; they can disagree. Grid sizes are those Windy shows in its menu; forecast ranges are approximate (checked 2026-10-26) and can change.</p>
@@ -80,13 +95,20 @@
     <li>If the arrow tip sits in a dark sector, a change of course or speed that moves it out is worth considering.
         Guidance only: it does not replace your ship's stability information.</li>
 </ul></div></details>
-<details class="gd"><summary>🛟 Safe speed plan (keep the track, change the speed)</summary><div class="gd__b"><ul>
-    <li>Avoids the weather <b>you</b> chose (⚙ Settings → Safe speed plan) using your own limits, by slowing down,
+<details class="gd"><summary>🛟 Safe speed and course plan (change the speed, stop, or alter course for a while)</summary><div class="gd__b"><ul>
+    <li>Avoids the weather <b>you</b> chose (⚙ Settings → Safe speed and course plan) using your own limits, by slowing down,
         speeding up or stopping and drifting in open water. Speeds from your RPM table only, never a barred RPM.</li>
-    <li>It tries every allowed speed (and stop) every few hours along the voyage and keeps, at each time and place,
+    <li><b>Course alterations</b> (switch in the same settings, on by default): where the track course meets the weather,
+        it also tries altering course 20°, 40° or 60° (largest alteration is a setting) to port or starboard for 3 to 12 hours,
+        then the same angle back to the track. Useful where a limit depends on the heading: sea or swell on the beam or quarter,
+        IMO warnings (parametric / synchronous rolling, broaching), roll and pitch. It stays within the set distance off the
+        track and away from land. Off the track the weather is taken from the nearest forecast point along the route, so it is
+        not a way round a storm: for that, use Change the track.</li>
+    <li>It tries every allowed speed (and stop, and alteration) every few hours along the voyage and keeps, at each time and place,
         the cheapest way of getting there without meeting that weather (dynamic programming; no "AI"). Then it picks:
         arrive by the wanted time with the least fuel, else as early as is safe.</li>
-    <li>Each change comes with its reason: what you would meet at your planned speed, when and where.</li>
+    <li>Each change comes with its reason: what you would meet at your planned speed or on the track course, when and where,
+        and the course to steer.</li>
     <li>Not included: currents, drift while stopped (an estimate is shown), depths, traffic, shelter. Weather: the
         forecast fetched in the Weather tab, which gets less certain further ahead. <b>Decision support only.</b></li>
 </ul></div></details>
@@ -204,6 +226,16 @@
 <p class="pp-note"><b>Distances</b> (Route → Distances): great circle, rhumb line and along the shipping lanes (Eurostat SeaRoute / MARNET network, EUPL-1.2), with the canals and straits passed, and the ports, canals and straits near your route with distance to go and ETA. Ports: open "sea-ports" list (MIT), about 1,600 ports, approximate positions. All approximate, for planning and orientation, not for navigation.</p></div></details>
 </div>
 <style lang="less">
+    .gd-link {
+        border: 0;
+        background: none;
+        padding: 0;
+        color: var(--g-accent-hover);
+        font: inherit;
+        cursor: pointer;
+        text-decoration: underline;
+        text-align: left;
+    }
     .gd-top {
         position: sticky;
         top: 52px;

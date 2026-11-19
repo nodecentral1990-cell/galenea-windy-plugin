@@ -37,6 +37,7 @@
         x: '<path d="M6 6l12 12M18 6 6 18"/>',
         chevronDown: '<path d="m6 9 6 6 6-6"/>',
         chevronRight: '<path d="m9 6 6 6-6 6"/>',
+        back: '<path d="m15 6-6 6 6 6"/>',
         check: '<path d="m5 12 5 5 9-10"/>',
         warn: '<path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4M12 17h.01"/>',
         octagon: '<path d="M7.9 2h8.2L22 7.9v8.2L16.1 22H7.9L2 16.1V7.9Z"/><path d="M12 8v4M12 16h.01"/>',
@@ -60,6 +61,15 @@
         sparkle: '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M18 6l-2.5 2.5M8.5 15.5 6 18"/>',
         heat: '<path d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z"/>',
         pin: '<path d="M12 17v5M5 17h14l-2-5V4H7v8Z"/>',
+        search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/>',
+        minimise: '<path d="M5 18h14"/>',
+        restore: '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+        reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+        arrowUp: '<path d="M12 20V4M6 10l6-6 6 6"/>',
+        tide: '<path d="M2 18c2.5 0 2.5-2 5-2s2.5 2 5 2 2.5-2 5-2 2.5 2 5 2"/><path d="M8 3v8M5 6l3-3 3 3M16 11V3M13 8l3 3 3-3"/>',
+        sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/>',
+        moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z"/>',
+        pause: '<path d="M8 5v14M16 5v14"/>',
         log: '<path d="M8 3h8l4 4v14H4V3Z"/><path d="M8 11h8M8 15h8M8 7h4"/>',
     };
 </script>

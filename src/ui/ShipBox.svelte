@@ -1,7 +1,7 @@
 <!-- Small window at the top left of the map: route name, the times in UTC, the chosen ship symbol
      at the planned position for Windy's slider time, and wind / sea / swell / current.
      One diagram: danger sectors, sea / swell flags, wind barb, current and the ship (RiskPolar). -->
-<div class="sb pp" use:toBody data-g-dim={$panelDim ? '' : null} style="left:{x}px;top:{y}px;width:{w}px;{boxH != null ? `height:${boxH}px;` : ''}">
+<div class="sb pp" use:toBody data-g-dim={$panelDim ? '' : null} style="left:{x}px;top:{y}px;width:{w}px;{boxH != null && !small ? `height:${boxH}px;` : ''}">
     <div class="sb__head" on:pointerdown={dragStart} title="Drag to move; drag the right or bottom edge to resize">
         <b class="sb__name">{routeName || 'Galenea'}</b>
         <Hint title="Ship window" size={14}>
@@ -10,9 +10,10 @@
             <p>Sectors: from Sea, Swell 1 and Swell 2 (IMO MSC.1/Circ.1228, advisory). Roll / pitch: the plugin's estimate.</p>
         </Hint>
         {#if onNow}<button class="sb__btn sb__nowbtn" on:click|stopPropagation={onNow} title="Set the map to the present time (computer clock, UTC) with the ship in the middle"><Icon name="clock" size={12} /> Now</button>{/if}
-        {#if onSettings}<button class="sb__btn" on:click|stopPropagation={onSettings} title="Display settings (ship symbols, colours, this window)">⚙</button>{/if}
-        <button class="sb__btn" on:click|stopPropagation={() => (small = !small)} title={small ? 'Show more' : 'Show less'}>{small ? '▢' : '–'}</button>
-        <button class="sb__btn" on:click|stopPropagation={onClose} title="Hide (switch back on in ⚙ Settings → Map display)">✕</button>
+        {#if onSettings}<button class="sb__btn" data-g="gear" aria-label="Settings: ship window, symbols, colours, polar diagram" on:click|stopPropagation={e => onSettings?.(e.currentTarget.closest('.sb'))} title="Settings for this window: ship symbols, colours, polar diagram (opens beside it)"><Icon name="gear" size={13} /></button>{/if}
+        <button class="sb__btn" on:click|stopPropagation={() => (small = !small)} title={small ? 'Show it again (size before minimising)' : 'Minimise'}><Icon name={small ? 'restore' : 'minimise'} size={13} /></button>
+        <button class="sb__btn" on:click|stopPropagation={resetBox} title="Original size and place (drag the title bar to move, the right / bottom edge or the corner to resize)"><Icon name="reset" size={13} /></button>
+        <button class="sb__btn" on:click|stopPropagation={onClose} title="Hide (switch back on in Settings → Map display)"><Icon name="x" size={13} /></button>
     </div>
     <div class="sb__times">
         <div>Map time <b>{fmtFull(mapTs)} UTC</b></div>
@@ -39,7 +40,7 @@
                             <td>{fmtTe(encounterOf(wv.period, wv.dir, pos.course, stw))}</td>
                         </tr>
                     {/each}
-                    {#if wx.seaWindy === false || wx.seaWindy == null}<tr class="est"><td /><td colspan="5" class="wrap">Sea worked out from SWH (not read from Windy yet: Weather tab → Read sea)</td></tr>{/if}
+                    {#if wx.seaWindy === false || wx.seaWindy == null}<tr class="est"><td /><td colspan="5" class="wrap">Sea worked out from SWH (not read from Windy yet: Weather → Read sea)</td></tr>{/if}
                     <tr><td><i style="background:#151515;border-color:#aaa" /></td><td>Wind</td><td><b>{f0(wx.windKn)} kn</b></td><td>{wx.gustKn != null ? `gust ${f0(wx.gustKn)}` : ''}</td><td>{deg(wx.windDir)}{wx.windDir != null ? ` (${relFrom(wx.windDir, pos.course).toFixed(0)})` : ''}</td><td /></tr>
                     <tr><td /><td>Wave power</td><td colspan="2"><b class="pw pw{band(wx.powerKw)}">{f0(wx.powerKw)}{wx.powerCalc ? '*' : ''} kW/m</b></td><td colspan="2">{bandText(wx.powerKw)}</td></tr>
                     {#if icing && icing.cls !== 'none'}<tr class="ice"><td /><td>Icing</td><td colspan="2"><b>{icing.cls}</b></td><td colspan="2">spray · air {f0(wx.airTempC)} °C, sea {f0(wx.seaTempC)} °C</td></tr>{/if}
@@ -49,11 +50,11 @@
                 {#if logging && polar}
                     <RollObsForm {wx} lat={pos.lat} lon={pos.lon} heading={pos.course} speed={stw} {mapTs} resonance={polar.settings} onClose={() => (logging = false)} />
                 {:else if polar}
-                    <button class="pp-btn pp-btn--ghost small sb__log" on:click={() => (logging = true)} title="Optional: note the roll you see, to fine-tune the estimate (⚙ Settings → Roll and pitch)"><Icon name="log" size={13} /> Log roll</button>
+                    <button class="pp-btn pp-btn--ghost small sb__log" on:click={() => (logging = true)} title="Optional: note the roll you see, to fine-tune the estimate (Settings → Roll and pitch → Observed rolls)"><Icon name="log" size={13} /> Log roll</button>
                 {/if}
                 {#if runInfo}<div class="sb__run">Weather data: {runInfo.air} · waves {runInfo.waves} · fetched {runInfo.fetched}</div>{/if}
             {:else}
-                <p class="sb__msg">{hasForecast ? 'Beyond the forecast at this time.' : 'No forecast yet: Weather tab → Get forecast.'}</p>
+                <p class="sb__msg">{hasForecast ? 'Beyond the forecast at this time.' : 'No forecast yet: Weather → Get forecast.'}</p>
             {/if}
         {:else}
             <p class="sb__msg">{voyageNote}</p>
@@ -67,6 +68,7 @@
 <svelte:window bind:innerHeight={innerH} />
 
 <script lang="ts">
+    import { onResetAll } from './floatWin';
     import { panelDim } from '../state';
     import Hint from './base/Hint.svelte';
     import Icon from './base/Icon.svelte';
@@ -98,7 +100,7 @@
     export let voyageNote = '';
     export let onClose: () => void;
     /** Opens the display settings */
-    export let onSettings: (() => void) | null = null;
+    export let onSettings: ((anchor: Element | null) => void) | null = null;
     /** Which forecast runs the weather comes from */
     export let runInfo: { air: string; waves: string; fetched: string } | null = null;
     export let colors: Partial<FlagColors> = {};
@@ -173,9 +175,21 @@
         window.addEventListener('pointermove', move);
         window.addEventListener('pointerup', up);
     }
+    /** Original design size and place (owner, 2026-11-13) */
+    function resetBox() {
+        x = 12;
+        y = 70;
+        w = 380;
+        h = null;
+        small = false;
+    }
+    const offReset = onResetAll(resetBox);
     let clock = Date.now();
     const timer = setInterval(() => (clock = Date.now()), 20_000);
-    onDestroy(() => clearInterval(timer));
+    onDestroy(() => {
+        clearInterval(timer);
+        offReset();
+    });
 
 
     function toBody(node: HTMLElement) {

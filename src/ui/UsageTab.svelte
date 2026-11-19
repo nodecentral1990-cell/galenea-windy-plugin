@@ -15,7 +15,7 @@
     estimate from your speed / fuel table, not measured fuel). Hours count while the plugin is open.</p></Hint></div>
 
 <div class="row">
-    <button class="pp-btn" on:click={toggleHeat} disabled={!cellsN}>{heatOn ? 'Hide usage map' : '🗺 Show usage map'}</button>
+    <button class="pp-btn" on:click={toggleHeat} disabled={!cellsN}>{heatOn ? 'Hide usage map' : 'Show usage map'}</button>
     <span class="pp-note">{cellsN ? `${cellsN} one-degree squares` : 'Nothing yet: plan a route and get its forecast.'}</span>
 </div>
 {#if heatOn}<p class="pp-note"><span class="scale" /> pale = used once, dark purple = used most (routes planned, positions sailed).</p>{/if}
@@ -23,9 +23,10 @@
 <h4 class="h">Activity log</h4>
 <div class="pp-note g-hl">Records what the plugin does, to attach to a problem report. <Hint title="Activity log"><p>The plugin notes what it does and what you change (route, ship, limits, weather fetched, currents read, errors), with
     UTC times. Save it as a file and attach it to <b>🐞 Report a problem</b>: the developer can then see what actually
-    happened. Kept only in this browser; nothing is sent by itself. {#if !$logEnabled}<b>Recording is off (⚙ Settings → Activity log and usage).</b>{/if}</p></Hint></div>
+    happened. Kept only in this browser; nothing is sent by itself. {#if !$logEnabled}<b>Recording is off (the gear beside this).</b>{/if}</p></Hint><Gear host="usage" line chips={[{ id: 'log' }]} />{#if !$logEnabled} <b class="pp-err">Recording is off.</b>{/if}</div>
+<SettingsFold host="usage" />
 <div class="row">
-    <button class="pp-btn" on:click={() => saveLog(hide)}>💾 Save activity log ({$logCount})</button>
+    <button class="pp-btn" on:click={() => saveLog(hide)}><Icon name="save" size={15} /> Save activity log ({$logCount})</button>
     <button class="pp-btn pp-btn--ghost" on:click={clear} disabled={!$logCount}>Clear log</button>
 </div>
 <label class="check"><input type="checkbox" bind:checked={hide} /> Hide exact positions and names in the file (rounded to whole degrees)</label>
@@ -42,6 +43,9 @@
 
 <script lang="ts">
     import Hint from './base/Hint.svelte';
+    import Gear from './base/Gear.svelte';
+    import SettingsFold from './settings/SettingsFold.svelte';
+    import Icon from './base/Icon.svelte';
     import { onDestroy } from 'svelte';
 
     import { clearLog, logCount, logEnabled, logEntries } from '../lib/activityLog';

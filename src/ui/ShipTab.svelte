@@ -1,3 +1,4 @@
+{#if !part || part === 'particulars'}
 <div class="grid">
     <label>Ship name <input bind:value={$vessel.name} /></label>
     <label title="IMO MSC.1/Circ.1228 uses length between perpendiculars">LBP (m) * <input type="number" step="0.1" value={$vessel.lbp ?? ''} on:change={e => setNum('lbp', e)} /></label>
@@ -53,7 +54,8 @@
     {/if}
     {#if meanDraft != null}<div>Mean draft {meanDraft.toFixed(2)} m · trim {trim?.toFixed(2)} m {trim && trim > 0 ? 'by the stern' : trim && trim < 0 ? 'by the head' : ''}</div>{/if}
 </div>
-
+{/if}
+{#if !part || part === 'profile'}
 <h4>Ship profile file</h4>
 <div class="pp-note g-hl">Kept in this browser; save a profile file for another computer. <Hint title="Ship profile"><p>These values are kept in this browser on this computer only. To use them on another computer, save the
     profile to a file (e.g. on a USB stick) and load it there.</p></Hint></div>
@@ -61,9 +63,12 @@
 <button class="pp-btn pp-btn--ghost" on:click={loadProfile}>Load ship profile…</button>
 <button class="pp-btn pp-btn--ghost" on:click={clearAll}>Clear everything saved in this browser</button>
 {#if message}<div class="pp-note" class:pp-err={isError}>{message}</div>{/if}
-<p class="pp-note">* needed for the IMO MSC.1/Circ.1228 checks.</p>
+{/if}
+{#if !part || part === 'particulars'}<p class="pp-note">* needed for the IMO MSC.1/Circ.1228 checks.</p>{/if}
 
 <script lang="ts">
+    /** Show only this piece of the group (a gear beside a function); null = all of it */
+    export let part: string | null = null;
     import Hint from './base/Hint.svelte';
     import { get } from 'svelte/store';
 

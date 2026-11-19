@@ -1,7 +1,7 @@
 <!-- Weather under the cursor (owner, 2026-11-02): a bar at the top of the map with the weather where the mouse rests,
      at Windy's map time. Minimise / close; switch back on in Settings → Map display. Computer only (phones have no cursor,
      and Windy hides the map while the plugin is open there). -->
-<div class="cb pp" class:cb--min={$cursorBar.min} data-g-dim={$panelDim ? '' : null} use:toBody role="status" aria-live="polite" style={place}>
+<div class="cb pp" class:cb--min={$cursorBar.min} data-g-dim={$panelDim ? '' : null} use:toBody use:fw role="status" aria-live="polite" style={place}>
     <div class="cb__row">
         <span class="cb__pos mono" title="Cursor position">
             {#if $cursorPos}{fmtLat($cursorPos.lat, 1)} {fmtLon($cursorPos.lon, 1)}{:else}Move the mouse over the map{/if}
@@ -31,16 +31,21 @@
             <Hint title="Weather under the cursor" size={14}>
                 <p>The weather where the mouse rests, at <b>Windy's map time</b> ({c ? fmtTime(c.t) : '—'} UTC), from Windy's ECMWF and ECMWF-WAM point forecast for the nearest 0.25° point{c?.cell ? ` (${c.cell.lat.toFixed(2)}°, ${c.cell.lon.toFixed(2)}°)` : ''}{c?.run ? `, run ${fmtRun(c.run)}` : ''}.</p>
                 <p><b>Sea*</b> = worked out from SWH and the swells (Windy's point forecast has no sea of its own). Visibility and current are read from Windy's map only when that layer is shown. Directions: where wind and waves come <b>from</b>; current: where it sets.</p>
-                <p>Planning aid only. Switch the bar on or off in Settings → Map display.</p>
+                <p>Planning aid only. Switch the bar on or off with the gear beside this (or Settings → Map display).</p>
             </Hint>
-            <button class="g-ibtn g-ibtn--s" title={$cursorBar.min ? 'Show everything' : 'Minimise'} aria-label={$cursorBar.min ? 'Show everything' : 'Minimise'} on:click={() => cursorBar.update(b => ({ ...b, min: !b.min }))}>{$cursorBar.min ? '▢' : '–'}</button>
-            <button class="g-ibtn g-ibtn--s" title="Close (switch on again in Settings → Map display)" aria-label="Close" on:click={close}>✕</button>
+            <Gear win chips={[{ id: 'map', part: 'windows', label: 'Windows and overlays' }, { id: 'map', part: 'ships', label: 'Ship symbols & colours' }]} />
+            <button class="g-ibtn g-ibtn--s" title="Original size and place (drag the bar to move it, its right edge or corner to resize it)" aria-label="Original size and place" on:click={() => win?.reset()}><Icon name="reset" size={14} /></button>
+            <button class="g-ibtn g-ibtn--s" title={$cursorBar.min ? 'Show everything' : 'Minimise'} aria-label={$cursorBar.min ? 'Show everything' : 'Minimise'} on:click={() => cursorBar.update(b => ({ ...b, min: !b.min }))}><Icon name={$cursorBar.min ? 'restore' : 'minimise'} size={14} /></button>
+            <button class="g-ibtn g-ibtn--s" title="Close (switch on again in Settings → Map display)" aria-label="Close" on:click={close}><Icon name="x" size={14} /></button>
         </span>
     </div>
 </div>
 
 <script lang="ts">
-    import { onDestroy, onMount } from 'svelte';
+    import Gear from './base/Gear.svelte';
+    import Icon from './base/Icon.svelte';
+    import { onDestroy, onMount, tick } from 'svelte';
+    import { floatWin, type FloatWin } from './floatWin';
     import Hint from './base/Hint.svelte';
     import { fmtLat, fmtLon, fmtTime } from '../lib/format';
     import { sprayIcing } from '../lib/icing';
@@ -69,9 +74,32 @@
         document.body.appendChild(node);
         return { destroy: () => node.remove() };
     }
+    // floating window (owner, 2026-11-13): drag the bar to move it, the right edge or corner to resize; ↺ original
+    let win: FloatWin | null = null;
+    function fw(node: HTMLElement) {
+        try {
+            win = floatWin(node, {
+                key: 'cursorbar',
+                head: node.querySelector('.cb__row') as HTMLElement | null,
+                buttons: { min: false, reset: false, close: false },
+                minW: 260,
+                minH: 28,
+                onChange: () => {
+                    if (win && !win.placed()) {
+                        place = '';
+                        tick().then(fit);
+                    }
+                },
+            });
+        } catch {
+            /* still shown, just not movable */
+        }
+        return { destroy: () => win?.destroy() };
+    }
     // keep clear of the ship window (top left, movable): the bar starts to its right when they would overlap
     let place = '';
     function fit() {
+        if (win?.placed()) return; // the user has put it somewhere
         const PANE = 520;
         const mapRight = window.innerWidth - PANE;
         const sb = document.querySelector('.sb') as HTMLElement | null;
@@ -151,7 +179,7 @@
         align-items: center;
         gap: 2px;
     }
-    @media (max-width: 600px) {
+    @media (max-width: 600px), (max-height: 500px) and (pointer: coarse) {
         .cb {
             display: none;
         }

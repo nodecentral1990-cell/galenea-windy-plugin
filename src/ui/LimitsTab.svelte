@@ -1,3 +1,4 @@
+{#if !part || part === 'thresholds'}
 <h4>Weather thresholds <span class="pp-note">(values apply to port and starboard)</span></h4>
 <div class="hs">
     <span class="tag alert">Alert</span>
@@ -41,7 +42,8 @@
 <div class="pp-note g-hl">By direction relative to the bow. <Hint title="Which values are checked"><p>Wind: Windy 10 m wind. Swell 1 / 2: Swell 1 and Swell 2, each by its own direction. Sea: Windy's wind waves (read along
     the route after the forecast), by their own direction; until read, worked out from SWH and the swells with the wind direction.
     SWH: all directions.</p></Hint></div>
-
+{/if}
+{#if !part || part === 'imo'}
 <h4>Resonance alert thresholds (m)</h4>
 <p class="pp-note">The wave height at which each IMO MSC.1/Circ.1228 warning starts to show. Empty = off.</p>
 <div class="res">
@@ -58,6 +60,8 @@
         <span class="pp-note">IMO gives no number. Owner's choice: 15%.</span>
     </label>
 </div>
+{/if}
+{#if !part || part === 'ice'}
 <h4>Cold and ice</h4>
 <div class="pp-note g-hl">Empty = off. <b class="pp-err">Windy has no sea-ice data: use the official ice services.</b> <Hint title="Cold and ice"><p>Warnings when it is colder than these (empty = off). <b>Windy has no sea-ice data</b> (no ice edge, concentration or
     thickness): for ice use the official ice services (e.g. Canadian Ice Service for the St Lawrence / Montreal, the Finnish /
@@ -84,9 +88,12 @@
     </select>
 </div>
 <p class="pp-note">Sea water freezes at about −1.8 °C; Windy's sea temperature is one value per forecast point (not hourly).</p>
-<button class="pp-btn pp-btn--ghost" on:click={reset}>Reset all limits to defaults</button>
+{/if}
+{#if !part}<button class="pp-btn pp-btn--ghost" on:click={reset}>Reset all limits to defaults</button>{/if}
 
 <script lang="ts">
+    /** Show only this piece of the group (a gear beside a function); null = all of it */
+    export let part: string | null = null;
     import Hint from './base/Hint.svelte';
     import { defaultThresholds, SECTOR_LABEL, SECTORS, type Sector, type SectorLimits, type Thresholds } from '../lib/weather';
     import { thresholds, vessel } from '../state';

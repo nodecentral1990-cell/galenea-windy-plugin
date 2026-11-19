@@ -9,6 +9,7 @@ const page_url = 'file://' + path.join(__dirname, 'dist/index.html');
 const fixture = path.join(__dirname, '../test/fixtures/made-up-furuno-style.rtz');
 const log = [];
 const ok = (cond, msg) => { log.push((cond ? 'PASS ' : 'FAIL ') + msg); };
+const localStoragePlace = raw => { try { const p = JSON.parse(raw); return `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`; } catch { return ''; } };
 // New navigation (UI overhaul 2026-11-02): 5 sections + sub-views + Help drawer. Old tab names map onto it.
 async function go(page, name) {
     const nav = n => page.locator('nav.g-nav button', { hasText: n }).click();
@@ -19,7 +20,9 @@ async function go(page, name) {
         case 'Route': await closeHelp(); await nav('Route'); return seg('Waypoints');
         case 'Speed': await closeHelp(); await nav('Route'); return seg('Speed & fuel');
         case 'Distances': await closeHelp(); await nav('Route'); return seg('Distances');
-        case 'Polar': case 'Motion': await closeHelp(); return nav('Motion');
+        case 'Polar': case 'Motion': await closeHelp(); await nav('Motion'); return seg('At the map time');
+        case 'Weather': await closeHelp(); await nav('Weather'); return seg('Along route');
+        case 'Map charts': await closeHelp(); await nav('Weather'); return seg('Map charts');
         case 'Compare': await closeHelp(); await nav('Optimise'); return seg('Compare');
         case 'Optimise': await closeHelp(); return nav('Optimise');
         case 'Info': case 'Guide': return help('Guide');
@@ -50,9 +53,18 @@ async function go(page, name) {
     await page.route(/open-meteo\.com/, route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
     await page.route(/tiles\.openseamap\.org|wms\.gebco\.net/, route => route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') }));
     page.on('requestfailed', r => log.push('NOTE request failed: ' + r.url().slice(0, 120)));
+    // The checks below were written for "press Get forecast, then Windy's map is read": start with that (the weather
+    // by itself, 2026-11-19, is switched on and checked near the end)
+    await page.addInitScript(() => {
+        if (!localStorage.getItem('windy-plugin-passage-plan:wxauto')) localStorage.setItem('windy-plugin-passage-plan:wxauto', JSON.stringify({ followRoute: false, every3h: false, extras: false, readMap: true }));
+    });
     await page.goto(page_url);
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${out}/01-empty.png` });
+    // voyage strip (UI reimagine, owner 2026-11-13): with no route it says how to start
+    ok((await page.locator('.g-voy[data-state="empty"] button', { hasText: 'Open a route file' }).count()) === 1, 'voyage strip, no route: "Open a route file" is the next step');
+    ok(await page.evaluate(() => ['static', 'relative'].includes(getComputedStyle(document.querySelector('.g-voy')).position)), 'voyage strip is in the normal flow of the panel (not fixed or sticky)');
+    ok(/Planning aid only/.test(await page.locator('.g-aid').innerText()), '"Planning aid only" line visible at the top of the panel');
     // Graph window open at the bottom of the map on first use; closed for the map tests, tested later
     ok((await page.locator('.gp').count()) === 1, 'graph window shown at the bottom of the map');
     // the panel must keep Windy's own positioning so it scrolls (owner's report 0.23.2: "its not scrolling")
@@ -66,6 +78,7 @@ async function go(page, name) {
     await page.waitForSelector('text=Opened');
     const rows = await page.locator('.tablewrap tbody tr').count();
     ok(rows === 4, `route opened with ${rows} waypoints`);
+    ok((await page.locator('.g-voy[data-state="etd"] button', { hasText: 'Set the ETD' }).count()) === 1, 'voyage strip, route without ETD: "Set the ETD" is the next step');
 
     // Settings tab: open one folding group and return it
     const settings = async title => {
@@ -94,7 +107,7 @@ async function go(page, name) {
         ok((await pop.locator('.dtf__preview').innerText()).includes(etd.slice(11, 16)), 'editor shows what will be set');
         // the editor opens in place: it must not cover the setting below it
         const popBox = await pop.boundingBox();
-        const below = await page.locator('.g-card__title', { hasText: 'Voyage' }).boundingBox();
+        const below = await page.locator('.g-card__title', { hasText: 'Waypoints' }).boundingBox(); // the card under Times (the Voyage card is now one line below the waypoints)
         ok(popBox && below && (below.y >= popBox.y + popBox.height - 1 || below.x >= popBox.x + popBox.width - 1), 'date editor does not cover other settings');
         await pop.locator('button', { hasText: /^OK$/ }).click();
         await page.waitForTimeout(200);
@@ -106,6 +119,13 @@ async function go(page, name) {
     const summary = await page.locator('.summary').innerText();
     ok(/1657\.4 nm/.test(summary), 'summary total 1657.4 nm: ' + summary.replace(/\s+/g, ' '));
     await page.screenshot({ path: `${out}/02-route.png` });
+    ok((await page.locator('.g-voy[data-state="forecast"] [data-g="strip-forecast"]').count()) === 1 && /1657 nm/.test(await page.locator('.g-voy').innerText()), 'voyage strip, route + ETD: route, times, distance and "Get forecast" as the next step');
+    // "Add waypoints by clicking the map" now shows a note on the map; Esc ends it
+    await page.locator('label.check', { hasText: 'Add waypoints by clicking the map' }).locator('input').check();
+    ok(/Click the map to add waypoints/.test(await page.locator('.pp-maptool').innerText().catch(() => '')), 'map tool: a note on the map says clicks add waypoints');
+    await page.locator('#map').hover();
+    await page.keyboard.press('Escape');
+    ok((await page.locator('.pp-maptool').count()) === 0 && !(await page.locator('label.check', { hasText: 'Add waypoints by clicking the map' }).locator('input').isChecked()), 'map tool: Esc ends "add waypoints" and the note goes');
     const labels = await page.locator('.pp-label').allInnerTexts();
     ok(labels.length === 3, 'distance labels on the map: ' + labels.join(' | '));
     const ships = await page.locator('.pp-ship').count();
@@ -203,6 +223,27 @@ async function go(page, name) {
     const ovTable = await page.locator('.pp-overlay table').boundingBox();
     ok(ov && ovTable && ovTable.width <= ov.width, `full-size table shows every column without scrolling (table ${Math.round(ovTable.width)} px in ${Math.round(ov.width)} px)`);
     await page.screenshot({ path: `${out}/04c-full-table.png` });
+    // floating window (owner, 2026-11-13): minimise, move, resize, original size
+    await page.locator('.pp-overlay .g-fw__min').click();
+    ok((await page.locator('.pp-overlay .pp-overlay__body').isVisible()) === false, 'full-size window minimises to its title bar');
+    await page.locator('.pp-overlay .g-fw__min').click();
+    // resize first (the corner is on the screen), then move
+    const ovc = await page.locator('.pp-overlay .g-fw__grip--c').boundingBox();
+    await page.mouse.move(ovc.x + 5, ovc.y + 5);
+    await page.mouse.down();
+    await page.mouse.move(ovc.x - 195, ovc.y - 145, { steps: 5 });
+    await page.mouse.up();
+    const ovSized = await page.locator('.pp-overlay').boundingBox();
+    const ovh = await page.locator('.pp-overlay .pp-overlay__head').boundingBox();
+    await page.mouse.move(ovh.x + 200, ovh.y + ovh.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(ovh.x + 260, ovh.y + 90, { steps: 5 });
+    await page.mouse.up();
+    const ovMoved = await page.locator('.pp-overlay').boundingBox();
+    ok(ovSized.width < ov.width - 150 && ovSized.height < ov.height - 100 && Math.abs(ovMoved.x - ovSized.x - 60) < 6 && Math.abs(ovMoved.y - ovSized.y - 70) < 25, `full-size window resizes and moves (${Math.round(ov.width)}×${Math.round(ov.height)} → ${Math.round(ovSized.width)}×${Math.round(ovSized.height)}; ${Math.round(ovSized.x)},${Math.round(ovSized.y)} → ${Math.round(ovMoved.x)},${Math.round(ovMoved.y)})`);
+    await page.locator('.pp-overlay .g-fw__reset').click();
+    const ovBack = await page.locator('.pp-overlay').boundingBox();
+    ok(Math.abs(ovBack.x - ov.x) < 2 && Math.abs(ovBack.width - ov.width) < 2 && Math.abs(ovBack.height - ov.height) < 2, 'full-size window back to its original size and place with ↺');
     await page.locator('.pp-overlay button', { hasText: 'Close' }).click();
     ok((await page.locator('.pp-overlay').count()) === 0, 'full-size table closes');
 
@@ -347,12 +388,133 @@ async function go(page, name) {
     ok(/always uses ECMWF/.test(await page.locator('#pane').innerText()), 'model used by the plugin stated');
     const useCur = await page.evaluate(() => JSON.parse(localStorage.getItem('windy-plugin-passage-plan:v1') || '{}').route?.useCurrents);
     ok(useCur === true, 'currents switched on for the SOG once read');
+
+    // ---------- UI reimagine (owner, 2026-11-13): weather table first, voyage strip, gear beside the function ----------
+    {
+        const scrollTop = v => page.evaluate(x => { const el = document.querySelector('.plugin__content'); if (x != null) el.scrollTop = x; return el.scrollTop; }, v);
+        await scrollTop(0);
+        const tblCard = page.locator('.g-card', { hasText: 'Weather table' });
+        const tblTop = (await tblCard.boundingBox()).y;
+        ok(tblTop < 950, `weather table starts inside the first screen after the forecast, straight under the forecast card (top at ${Math.round(tblTop)} px)`);
+        ok((await page.locator('.g-shell > .g-seg button').count()) === 4 && (await page.locator('.g-shell > .g-seg button.is-on').innerText()).includes('Along route'), 'Weather has four views: Along route, Port weather, Tides, Map charts');
+        // voyage strip: worst ahead = largest SWH in the table rows ahead; provenance shown
+        const stripTxt = (await page.locator('.g-voy').innerText()).replace(/\s+/g, ' ');
+        const swhCol = await page.locator('#pane .tablewrap table').first().evaluate(tbl => {
+            const heads = [...tbl.querySelectorAll('thead tr:last-child th')].map(th => th.textContent.trim());
+            const idx = heads.indexOf('m'); // the first "m" column is the SWH height
+            return [...tbl.querySelectorAll('tbody tr')].filter(tr => !tr.classList.contains('past') && tr.children.length === heads.length).map(tr => Number(tr.children[idx].textContent)).filter(v => isFinite(v));
+        });
+        const worstTbl = Math.max(...swhCol);
+        const worstStrip = Number((stripTxt.match(/SWH ([\d.]+) m/) || [])[1]);
+        ok(Math.abs(worstStrip - worstTbl) < 0.051, `voyage strip: "Worst ahead" SWH ${worstStrip} m = the largest SWH in the weather table rows ahead (${worstTbl})`);
+        ok(/in this forecast/.test(stripTxt) && /Weather data: Windy ECMWF run .* UTC · fetched .* UTC \(\d+ min ago\)/.test(stripTxt), 'voyage strip: says which forecast run and when it was fetched: ' + stripTxt.slice(-110));
+        ok(!/getting old/.test(stripTxt), 'voyage strip: a fresh forecast is not called old');
+        const tsBefore = await page.evaluate(() => window.__store.get('timestamp'));
+        await page.locator('[data-g="strip-worst"]').click();
+        await page.waitForTimeout(300);
+        const tsAfter = await page.evaluate(() => window.__store.get('timestamp'));
+        ok(tsAfter !== tsBefore && (await page.locator('nav.g-nav button.is-on').innerText()).includes('Motion'), 'voyage strip: clicking the worst sets the map time to it and opens Motion');
+        ok((await page.locator('.g-aid').count()) === 1 && (await page.locator('.g-voy').count()) === 1, 'aid line and voyage strip stay on every section');
+        await page.evaluate(t => window.__store.set('timestamp', t), tsBefore);
+        await go(page, 'Weather');
+
+        // gear beside the weather table: its settings open in place, the table stays
+        const gear = tblCard.locator('.g-card__head [data-g="gear"]');
+        ok((await gear.count()) === 1 && /Settings: Weather limits/.test(await gear.getAttribute('title')), 'weather table card has one gear (Weather limits)');
+        const gearCol = await gear.evaluate(e => getComputedStyle(e).color);
+        await gear.click();
+        await page.waitForTimeout(200);
+        const foldBox = tblCard.locator('.g-fold');
+        ok((await foldBox.count()) === 1 && (await page.locator('nav.g-nav button.is-on').innerText()).includes('Weather') && (await page.locator('#pane .tablewrap tbody tr').count()) > 20, 'gear opens the settings in place: still in Weather, the table still there');
+        ok(await foldBox.evaluate(e => ['static', 'relative'].includes(getComputedStyle(e).position)), 'the fold-out is an ordinary block in the panel (nothing floats)');
+        ok((await foldBox.locator('.g-fold__chip').count()) >= 3 && (await foldBox.locator('table tbody tr').count()) === 5, 'fold-out shows the limits by sector, with chips for the other groups this table uses');
+        ok(await foldBox.evaluate(e => e.contains(document.activeElement)), 'keyboard focus moves into the fold-out');
+        const noWarnCol = c => !/rgb\(244, 182, 63\)|rgb\(255, 92, 92\)/.test(c);
+        ok(noWarnCol(gearCol) && noWarnCol(await gear.evaluate(e => getComputedStyle(e).color)) && noWarnCol(await foldBox.evaluate(e => getComputedStyle(e).borderLeftColor)), 'gear and fold-out never use the warning colours (amber / red)');
+        // change a limit through the gear (SWH limit raised out of reach): the table's red cells change while it is on screen
+        const red0 = await page.locator('#pane .tablewrap td.lv2').count();
+        const windLimit = foldBox.locator('.hs input').nth(1);
+        const wind0 = await windLimit.inputValue();
+        await windLimit.fill('99'); await windLimit.dispatchEvent('change');
+        await page.waitForTimeout(300);
+        const red1 = await page.locator('#pane .tablewrap td.lv2').count();
+        const tblVisible = await page.locator('#pane .tablewrap').first().evaluate(e => { const r = e.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0; });
+        ok(red0 > 0 && red1 < red0 && tblVisible, `a limit changed through the gear recolours the table at once, table still on screen (red cells ${red0} → ${red1})`);
+        await page.screenshot({ path: `${out}/40-gear-weather-table.png` });
+        await windLimit.fill(wind0); await windLimit.dispatchEvent('change');
+        await page.waitForTimeout(200);
+        ok((await page.locator('#pane .tablewrap td.lv2').count()) === red0, 'limit put back: the table is as before');
+        // the panel still scrolls with a fold-out open
+        await scrollTop(0);
+        ok((await scrollTop(300)) > 0, 'the panel still scrolls with a fold-out open');
+        // one at a time
+        await scrollTop(0);
+        await page.locator('.g-card', { hasText: 'Forecast along the route' }).locator('.g-card__head [data-g="gear"]').click();
+        await page.waitForTimeout(200);
+        ok((await page.locator('#pane .g-fold').count()) === 1 && /Weather reading/.test(await page.locator('#pane .g-fold__title').innerText()), 'only one fold-out open at a time (opening another gear closes the first)');
+        ok((await page.locator('#pane .g-fold input[type=checkbox]').count()) === 5, 'forecast card gear: the Weather reading switches (by itself after route changes, every 3 h, downloads, Windy map, free fill; 2026-11-19)');
+        // Esc closes, focus back on the gear
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(150);
+        ok((await page.locator('#pane .g-fold').count()) === 0 && (await page.evaluate(() => document.activeElement?.getAttribute('data-gear'))) === 'weather', 'Esc closes the fold-out and the keyboard focus is back on its gear');
+        // line gear on the echo line opens the same group
+        await page.locator('.wx-echo [data-g="gear"]').click();
+        await page.waitForTimeout(150);
+        ok(/Weather reading/.test(await page.locator('#pane .g-fold__title').innerText().catch(() => '')), 'the small gear at the end of the "currents and visibility … free fill" line opens the same settings');
+        await page.locator('#pane .g-fold .g-fold__done').first().click();
+        ok((await page.locator('#pane .g-fold').count()) === 0, 'Done closes the fold-out');
+        // "All settings": the Settings tab, that group open and in view (the old buttons opened it without scrolling to it)
+        await gear.click();
+        await tblCard.locator('.g-fold__chip', { hasText: 'Roll and pitch marks' }).click();
+        await page.waitForTimeout(150);
+        ok(/Mark roll above/.test(await tblCard.locator('.g-fold').innerText()) && !/Bilge keels \(one side/.test(await tblCard.locator('.g-fold').innerText()), 'a chip shows only the part needed here (roll and pitch marks, not the whole group)');
+        await tblCard.locator('.g-fold button', { hasText: 'More in Roll and pitch estimate' }).click();
+        await page.waitForTimeout(150);
+        ok(/Bilge keels \(one side/.test(await tblCard.locator('.g-fold').innerText()), '"More in …" shows the whole group in the same fold-out');
+        await tblCard.locator('.g-fold button', { hasText: 'All settings' }).click();
+        await page.waitForTimeout(400);
+        const motD = page.locator('details#st-motion');
+        const motBox = await motD.locator('summary').boundingBox();
+        const paneBox = await page.locator('.plugin__content').boundingBox();
+        ok((await page.locator('nav.g-nav button.is-on').innerText()).includes('Settings') && (await motD.evaluate(e => e.open)) && motBox && motBox.y >= paneBox.y - 2 && motBox.y < paneBox.y + paneBox.height - 40, `"All settings" goes to Settings with that group open and in view (its title at ${Math.round(motBox?.y ?? -1)} px)`);
+        ok((await page.locator('details[open]').count()) === 1, '"All settings" closes the other groups, so the one asked for is not lost among them');
+        // Settings tab still lists every group, with search and "Used in"
+        const titles = await page.locator('details > summary .st-title').allInnerTexts();
+        ok(titles.length === 14 && ['Ship particulars', 'Roll and pitch estimate', 'Speed, RPM and fuel', 'Weather limits', 'Polar diagram', 'Map display', 'Route editing', 'Weather reading', 'Nautical charts and places', 'Wave chart (your colours)', 'Route optimisation', 'Safe speed and course plan', 'Updates', 'Activity log and usage'].every(t => titles.includes(t)), 'the Settings tab still lists every group (14)');
+        await page.locator('.st-search__in').fill('barred');
+        await page.waitForTimeout(200);
+        const found = await page.locator('details > summary .st-title').allInnerTexts();
+        ok(found.length === 1 && found[0] === 'Speed, RPM and fuel' && (await page.locator('details#st-speed').evaluate(e => e.open)), 'Settings search: "barred" leaves only Speed, RPM and fuel, opened');
+        await page.screenshot({ path: `${out}/41-settings-search.png` });
+        await page.locator('button[aria-label="Clear the search"]').click();
+        await page.waitForTimeout(150);
+        ok((await page.locator('details > summary .st-title').count()) === 14, 'clearing the search brings all 14 groups back');
+        await page.locator('details#st-motion .st-used__link', { hasText: 'Weather → Map charts' }).click();
+        await page.waitForTimeout(200);
+        ok((await page.locator('nav.g-nav button.is-on').innerText()).includes('Weather') && (await page.locator('.g-shell > .g-seg button.is-on').innerText()).includes('Map charts'), '"Used in" link under a settings group goes to that screen');
+        // restore the Settings tab as the later tests expect it (Ship particulars open)
+        await go(page, 'Settings');
+        if (!(await page.locator('details#st-ship').evaluate(e => e.open))) await page.locator('details#st-ship summary').click();
+        if (await page.locator('details#st-motion').evaluate(e => e.open)) await page.locator('details#st-motion summary').click();
+        await go(page, 'Weather');
+    }
     // Full-size weather table
     await page.locator('button', { hasText: 'Full-size table' }).click();
     const ovRows = await page.locator('.pp-overlay tbody tr').count();
     const wxRows0 = await page.locator('#pane .tablewrap tbody tr').count();
     ok(ovRows === wxRows0 && ovRows > 20, `full-size weather table shows all ${ovRows} rows`);
     await page.screenshot({ path: `${out}/08f-weather-full.png` });
+    // gear in the full-size table's title bar (UI reimagine): the limits in the floating settings window, over the table
+    await page.locator('.pp-overlay [data-g="gear"]').click();
+    await page.waitForTimeout(250);
+    ok((await page.locator('.g-setwin').count()) === 1 && /Weather limits/.test(await page.locator('.g-setwin__title').innerText()) && (await page.locator('.g-setwin table tbody tr').count()) === 5, 'full-size weather table gear: the weather limits in the floating settings window');
+    const zs = await page.evaluate(() => [Number(getComputedStyle(document.querySelector('.g-setwin')).zIndex), Number(getComputedStyle(document.querySelector('.pp-overlay')).zIndex)]);
+    ok(zs[0] > zs[1], 'the settings window sits above the full-size table');
+    await page.screenshot({ path: `${out}/44-gear-full-table.png` });
+    await page.locator('.pp-overlay tbody tr').first().hover();
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(200);
+    ok((await page.locator('.g-setwin').count()) === 0 && (await page.locator('.pp-overlay').count()) === 1, 'Esc closes the settings window first; the full-size table stays');
     await page.locator('.pp-overlay button', { hasText: 'Close' }).click();
     const wxRows = await page.locator('.tablewrap tbody tr').count();
     const fetches = await page.evaluate(() => window.__fetchCount);
@@ -583,9 +745,29 @@ async function go(page, name) {
     await go(page, 'Route');
     const routeTxt = await page.locator('#pane').innerText();
     ok(!/Ship symbols every/.test(routeTxt) && !/Keep the ship centred/.test(routeTxt) && !/Track colour/.test(routeTxt), 'Route tab has no display settings');
-    await page.locator('.sb button', { hasText: '⚙' }).click();
-    ok(await page.locator('details', { has: page.locator('summary', { hasText: 'Map display' }) }).evaluate(e => e.open), 'ship window ⚙ opens Settings → Map display');
+    await page.locator('.sb [data-g="gear"]').click();
+    await page.waitForTimeout(250);
+    ok((await page.locator('.g-setwin').count()) === 1 && /Map display/.test(await page.locator('.g-setwin__title').innerText()) && /Ship symbol/.test(await page.locator('.g-setwin').innerText()), 'ship window gear opens the Map display settings in a floating settings window beside it');
+    ok((await page.locator('nav.g-nav button.is-on').innerText()).includes('Route') && (await page.locator('.tablewrap tbody tr').count()) > 0, 'the gear does not leave the screen being worked on (still Route → Waypoints)');
     await page.screenshot({ path: `${out}/16-settings.png` });
+    // it is a floating window like the others: moves, minimises; a chip switches to the polar switches
+    const sw0 = await page.locator('.g-setwin').boundingBox();
+    await page.mouse.move(sw0.x + 120, sw0.y + 16); await page.mouse.down(); await page.mouse.move(sw0.x + 180, sw0.y + 56, { steps: 4 }); await page.mouse.up();
+    const sw1 = await page.locator('.g-setwin').boundingBox();
+    ok(Math.abs(sw1.x - sw0.x - 60) < 4 && Math.abs(sw1.y - sw0.y - 40) < 4, 'settings window moves by its title bar');
+    await page.locator('.g-setwin .g-fw__min').click();
+    ok((await page.locator('.g-setwin.g-fw--min').count()) === 1, 'settings window minimises');
+    await page.locator('.g-setwin .g-fw__min').click();
+    await page.locator('.g-setwin .g-fw__reset').click();
+    await page.locator('.g-setwin .g-fold__chip', { hasText: 'Polar diagram' }).click();
+    ok((await page.locator('.g-setwin label.switch').count()) === 5, 'settings window: the Polar diagram chip shows the same five switches as the Settings tab');
+    await page.locator('#map').hover();
+    await page.keyboard.press('Escape');
+    await page.waitForTimeout(150);
+    ok((await page.locator('.g-setwin').count()) === 0, 'Esc closes the settings window');
+    // the Settings tab still has the group, and going there by hand works as before
+    ok(await (await settings('Map display')).evaluate(e => e.open), 'Settings → Map display still there in the Settings tab');
+    await go(page, 'Route');
 
     // Info tab, weather data time, flag colours
     await go(page, 'Info');
@@ -693,11 +875,19 @@ async function go(page, name) {
     await page.screenshot({ path: `${out}/26-roll-observations.png` });
 
     // Roll step 2: roll lines over the normal map (2°, 4°, 6°… light → dark red), follows the time slider
-    await go(page, 'Weather');
+    await go(page, 'Map charts');
     const tRoll = Date.now();
     await page.locator('button', { hasText: 'Roll lines for this view' }).click();
     await page.waitForFunction(() => { const l = document.querySelector('.pp-roll-legend'); return l && /Roll chart/.test(l.textContent) && !/Working out/.test(l.textContent); }, null, { timeout: 120000 });
     const rk = await page.locator('.pp-roll-legend').innerText();
+    ok((await page.locator('.pp-roll-legend .g-fw__min').count()) === 1 && (await page.locator('.pp-roll-legend .g-fw__reset').count()) === 1 && (await page.locator('.pp-roll-legend .g-fw__close').count()) === 1, 'roll chart key: minimise, original size, close');
+    // gear on the map key (UI reimagine): the roll chart settings in the floating settings window
+    await page.locator('.pp-roll-legend .g-fw__gear').click();
+    await page.waitForTimeout(250);
+    ok((await page.locator('.g-setwin').count()) === 1 && /The lines show/.test(await page.locator('.g-setwin').innerText()) && !/Bilge keels \(one side/.test(await page.locator('.g-setwin').innerText()), 'roll chart key gear: the roll chart settings (only that part) in the settings window');
+    ok((await page.locator('.g-shell > .g-seg button.is-on').innerText()).includes('Map charts'), 'the key\'s gear does not change the screen in the panel');
+    await page.locator('.g-setwin .g-fw__close').click();
+    ok((await page.locator('.g-setwin').count()) === 0, 'settings window closes with its close button');
     ok(/Significant roll/.test(rk) && /planned course of the nearest leg/.test(rk) && /2°/.test(rk) && /15°/.test(rk), `roll chart key on the map (${((Date.now() - tRoll) / 1000).toFixed(1)} s): ` + rk.split('\n').slice(0, 1).join(' '));
     const redLines = await page.locator('.leaflet-overlay-pane path').evaluateAll(ps => ps.filter(p => ['#ff9e9e', '#ff6b6b', '#f03c3c', '#d01f1f', '#a80f0f', '#800808', '#5a0000'].includes(p.getAttribute('stroke'))).length);
     ok(redLines > 0 || /No line: the roll stays under 2°/.test(rk), `roll lines drawn in reds (${redLines} lines) or the key says the roll stays under 2°`);
@@ -732,7 +922,7 @@ async function go(page, name) {
     ok(blankState.overlay === 'wwaves' && blankState.particles === 'off' && blankState.iso === false && /246,248,250/.test(blankState.white), "only the roll on the map: Windy's wind-wave layer painted white, particles and pressure lines off");
     ok(/sea read from Windy's wind-wave layer \(\d+ of \d+ points\)/.test(await page.locator('.pp-roll-legend').innerText()), 'with the blank map, the sea is read from Windy\'s wind-wave layer for the chart');
     // pitch chart in blues
-    await go(page, 'Weather');
+    await go(page, 'Map charts');
     await page.locator('button', { hasText: 'Pitch lines for this view' }).click();
     await settled();
     const pk = await page.locator('.pp-roll-legend').innerText();
@@ -741,7 +931,7 @@ async function go(page, name) {
     await page.screenshot({ path: `${out}/29-pitch-chart.png` });
     await page.locator('button', { hasText: 'Roll lines for this view' }).click();
     await settled();
-    await go(page, 'Weather');
+    await go(page, 'Map charts');
     await page.screenshot({ path: `${out}/28-roll-chart-blank.png` });
     await page.locator('button', { hasText: 'Hide lines' }).click();
     ok((await page.locator('.pp-roll-legend').count()) === 0, 'roll lines can be hidden');
@@ -818,6 +1008,10 @@ async function go(page, name) {
     ok((await page.locator('.gp').boundingBox()).height > 600, 'graph window maximises');
     await page.screenshot({ path: `${out}/22b-graphs-max.png` });
     await page.locator('.gp__btn[title="Restore size"]').click();
+    ok((await page.locator('.gp .gp__edge--corner').count()) === 1, 'graph window has a corner to resize it');
+    await page.locator('.gp__btn[title^="Original size"]').click();
+    await page.waitForTimeout(200);
+    ok(Math.abs((await page.locator('.gp').boundingBox()).height - 300) < 3, 'graph window back to its original size with ↺');
     await page.evaluate(() => { window.__store.set('timestamp', Date.now() + 40 * 3600e3); window.__map.setView([0, 0], 4); });
     await page.locator('.g-head .g-now').click();
     await page.waitForTimeout(700);
@@ -830,7 +1024,7 @@ async function go(page, name) {
     await page.locator('.gp__btn[title^="Close"]').click();
 
     // Wave chart: your colours on Windy's wave layers, white below the minimum, lines of equal height
-    await go(page, 'Weather');
+    await go(page, 'Map charts');
     await page.locator('.wavechart button', { hasText: /^SWH$/ }).click();
     await page.waitForTimeout(400);
     const grad = await page.evaluate(() => window.__colors.waves.custom);
@@ -858,6 +1052,50 @@ async function go(page, name) {
     ok(/Swell 1.*forecast points every/.test(await page.locator('.pp-wave-legend').innerText()), 'swell 1 lines switched on separately (from forecast points)');
     await wcSec.locator('label.switch', { hasText: 'Swell 1' }).click();
     await page.screenshot({ path: `${out}/19-wave-chart.png` });
+    // the map key is a floating window too (owner, 2026-11-13)
+    ok((await page.locator('.pp-wave-legend .g-fw__min').count()) === 1 && (await page.locator('.pp-wave-legend .g-fw__reset').count()) === 1 && (await page.locator('.pp-wave-legend .g-fw__close').count()) === 1 && (await page.locator('.pp-wave-legend .g-fw__grip--c').count()) === 1, 'wave chart key: minimise, original size, close, and resize');
+    await page.locator('.sb .sb__btn[title="Minimise"]').click(); // the ship window can sit over the key
+    const wk0 = await page.locator('.pp-wave-legend').boundingBox();
+    const wkh = await page.locator('.pp-wave-legend .g-fw__head').boundingBox();
+    await page.mouse.move(wkh.x + 20, wkh.y + wkh.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(wkh.x + 470, wkh.y - 60, { steps: 5 }); // to the right of the ship window
+    await page.mouse.up();
+    const wk1 = await page.locator('.pp-wave-legend').boundingBox();
+    ok(Math.abs(wk1.x - wk0.x - 450) < 6 && wk1.y < wk0.y - 25, `wave chart key moves by its title bar (${Math.round(wk0.x)},${Math.round(wk0.y)} → ${Math.round(wk1.x)},${Math.round(wk1.y)})`);
+    await page.locator('.pp-wave-legend .g-fw__min').click();
+    ok((await page.locator('.pp-wave-legend').boundingBox()).height < 40, 'wave chart key minimises to its title bar');
+    await page.locator('.pp-wave-legend .g-fw__reset').click();
+    const wk2 = await page.locator('.pp-wave-legend').boundingBox();
+    const wkStyle = await page.evaluate(() => document.querySelector('.pp-wave-legend').getAttribute('style') || '');
+    ok(Math.abs(wk2.x - wk0.x) < 2 && !/top:/.test(wkStyle) && (await page.locator('.pp-wave-legend.g-fw--placed').count()) === 0, 'wave chart key back in its original place with ↺');
+    // gears (UI reimagine): on the key → the floating settings window; a second gear re-uses the same window; in the Waves row → in place
+    await page.locator('.pp-wave-legend .g-fw__gear').click();
+    await page.waitForTimeout(250);
+    ok(/Wave chart \(your colours\)/.test(await page.locator('.g-setwin__title').innerText().catch(() => '')), 'wave chart key gear opens the wave chart settings in the settings window');
+    await page.locator('.sb [data-g="gear"]').click();
+    await page.waitForTimeout(250);
+    ok((await page.locator('.g-setwin').count()) === 1 && /Map display/.test(await page.locator('.g-setwin__title').innerText()), 'a second gear re-uses the same settings window (never two)');
+    await page.locator('.g-setwin .g-fw__close').click();
+    await go(page, 'Map charts');
+    await page.locator('.wavechart [data-gear="wavechart"]').click();
+    await page.waitForTimeout(250);
+    const wcFold = page.locator('#pane .g-fold');
+    await wcFold.locator('label', { hasText: 'Blues' }).click();
+    await page.waitForTimeout(500);
+    const gradBlue = JSON.stringify(await page.evaluate(() => window.__colors.waves.custom));
+    ok(gradBlue !== JSON.stringify(grad) && (await page.locator('.g-shell > .g-seg button.is-on').innerText()).includes('Map charts'), 'wave palette changed through the gear in the Waves row: the map colours change, without leaving Map charts');
+    await page.screenshot({ path: `${out}/42-gear-wave-chart.png` });
+    await wcFold.locator('label', { hasText: 'Multicolour' }).click();
+    await page.waitForTimeout(400);
+    await wcFold.locator('.g-fold__done').first().click();
+    await page.locator('.pp-wave-legend .g-fw__close').click();
+    ok(!(await page.locator('.pp-wave-legend').isVisible()), 'wave chart key closes');
+    await page.locator('.sb .sb__btn[title^="Show it again"]').click();
+    const mdW = await settings('Map display');
+    await mdW.locator('button', { hasText: 'Show closed windows again' }).click();
+    ok(await page.locator('.pp-wave-legend').isVisible(), 'closed windows come back from Settings → Map display');
+    if (await page.locator('.gp').count()) await page.locator('.gp__btn[title^="Close"]').click(); // (it brings the graphs back too)
     await page.evaluate(() => window.__store.set('overlay', 'wwaves'));
     await page.waitForTimeout(400);
     ok((await page.evaluate(() => window.__colors.waves.custom))[2][0] === 1.5, 'sea layer uses the sea minimum (1.5 m)');
@@ -867,13 +1105,15 @@ async function go(page, name) {
 
     // Polar diagram switches: hidden warnings not drawn, still listed
     await go(page, 'Polar');
-    await page.locator('button', { hasText: 'Polar settings' }).click();
+    await page.locator('.g-card__head [data-gear="polar"]').click();
     await page.waitForTimeout(300);
-    const limSec = page.locator('details[open]', { has: page.locator('summary', { hasText: 'Polar diagram' }) }).first();
-    ok((await limSec.locator('label.switch').count()) === 5, 'Polar tab button opens the polar diagram switches');
+    const limSec = page.locator('#pane .g-fold');
+    ok((await limSec.locator('label.switch').count()) === 5 && (await page.locator('nav.g-nav button.is-on').innerText()).includes('Motion'), 'Motion card gear opens the polar diagram switches in place (the diagram stays on screen)');
+    ok((await limSec.locator('.g-fold__chip').count()) === 4, 'Motion gear: one gear, four chips (Polar diagram, Weather limits, Roll & pitch, Ship particulars)');
     await limSec.locator('label.switch', { hasText: 'Parametric rolling' }).click();
-    await go(page, 'Polar');
     await page.waitForTimeout(400);
+    await page.screenshot({ path: `${out}/43-gear-motion.png` });
+    await page.keyboard.press('Escape');
     const polTxt = await page.locator('#pane').innerText();
     ok(/Switched off here: Parametric roll/.test(polTxt), 'polar: parametric rolling switched off is not drawn (and says so)' + (/Switched off here: Parametric roll/.test(polTxt) ? '' : ': ' + polTxt.slice(0, 1500).replace(/\s+/g, ' ')));
     const limSec2 = await settings('Polar diagram');
@@ -884,12 +1124,13 @@ async function go(page, name) {
     await spB.locator('button', { hasText: 'Add a barred range' }).click();
     const brow = spB.locator('table.barred tbody tr').last();
     for (const [k, v] of [[0, '64'], [1, '67'], [2, 'critical: vibration']]) { const inp = brow.locator('input').nth(k); await inp.fill(v); await inp.dispatchEvent('change'); }
-    const spSet = await settings('Safe speed plan');
-    ok((await spSet.locator('label.switch').count()) === 7, 'safe speed plan settings: what to avoid (6 switches) and stops');
+    const spSet = await settings('Safe speed and course plan');
+    ok((await spSet.locator('label.switch').count()) === 8, 'safe speed and course plan settings: what to avoid (6 switches), stops and course alterations');
+    ok((await spSet.locator('select').count()) >= 3, 'settings: largest course alteration');
     await go(page, 'Optimise');
-    await page.locator('.g-shell > .g-seg button', { hasText: 'Speed only' }).click();
+    await page.locator('.g-shell > .g-seg button', { hasText: 'Speed & course' }).click();
     const tSp = Date.now();
-    await page.locator('button', { hasText: 'Work out a safe speed plan' }).click();
+    await page.locator('button', { hasText: 'Work out a safe speed and course plan' }).click();
     await page.waitForSelector('table.segs tbody tr', { timeout: 120000 });
     const splTxt = await page.locator('#pane').innerText();
     ok(/Done/.test(splTxt) && (await page.locator('table.cmp tbody tr').count()) === 2, `safe speed plan worked out and compared with your speeds (${((Date.now() - tSp) / 1000).toFixed(1)} s): ` + (splTxt.match(/Done[^\n]*/) || [''])[0]);
@@ -898,9 +1139,11 @@ async function go(page, name) {
     const whys = await page.locator('table.segs td.why').allInnerTexts();
     ok(whys.length > 0 && whys.every(w => w.trim().length > 10), 'each change has a reason: ' + whys[0].slice(0, 120));
     ok((await page.locator('.strip span').count()) === whys.length, 'time strip shows the speed along the voyage');
+    const courses = await page.locator('table.segs tbody tr.seg').evaluateAll(rs => rs.map(r => r.children[5].textContent.trim()));
+    ok(courses.length > 0 && courses.every(c => /^(\d{3}°|—)/.test(c)), 'course to steer shown for each part: ' + courses.slice(0, 6).join(', '));
     await page.screenshot({ path: `${out}/23-speed-plan.png`, fullPage: false });
     const wpsBeforeSp = await page.evaluate(() => JSON.parse(localStorage.getItem('windy-plugin-passage-plan:v1')).route.waypoints.length);
-    await page.locator('button', { hasText: 'Use this speed plan' }).click();
+    await page.locator('button', { hasText: 'Use this plan' }).click();
     await page.waitForTimeout(500);
     const wpsAfterSp = await page.evaluate(() => JSON.parse(localStorage.getItem('windy-plugin-passage-plan:v1')).route.waypoints.length);
     ok(/Speed plan taken/.test(await page.locator('#pane').innerText()) && wpsAfterSp >= wpsBeforeSp, `speed plan taken into the route (${wpsBeforeSp} → ${wpsAfterSp} waypoints), copy kept in Compare`);
@@ -989,7 +1232,7 @@ async function go(page, name) {
     ok(/^passage-plan-log-\d{8}-\d{4}Z\.json$/.test(logDl.suggestedFilename()), 'log file name with UTC time: ' + logDl.suggestedFilename());
     ok(kinds.has('open') && kinds.has('weather') && kinds.has('route') && kinds.has('layer'), 'log has open, route, weather and layer entries: ' + [...kinds].join(','));
     ok(kinds.has('click') && kinds.has('change') && kinds.has('screen') && kinds.has('windy'), 'log records buttons pressed, settings changed, window / panel sizes and Windy layer changes');
-    ok(logJson.entries.some(e => e.kind === 'click' && /Work out a safe speed plan/.test(e.msg)) && logJson.entries.some(e => e.kind === 'change' && /→/.test(e.msg)), 'log entries say which button and which setting');
+    ok(logJson.entries.some(e => e.kind === 'click' && /Work out a safe speed and course plan/.test(e.msg)) && logJson.entries.some(e => e.kind === 'change' && /→/.test(e.msg)), 'log entries say which button and which setting');
     ok(logJson.plugin && logJson.route && Array.isArray(logJson.route.legs) && logJson.ship, 'log header has plugin, route, legs and ship');
     await go(page, 'Feedback');
     ok((await page.locator('.fb button', { hasText: 'Save activity log' }).count()) === 1, 'Save activity log button in Help → Feedback');
@@ -997,10 +1240,22 @@ async function go(page, name) {
     // Reading currents pauses while the tab is hidden, carries on by itself when visible again
     await go(page, 'Weather');
     await page.evaluate(() => Object.defineProperty(document, 'hidden', { configurable: true, get: () => !!window.__hidden }));
-    if (!(await page.locator('button', { hasText: 'Read currents (exp.)' }).count())) {
-        // the route opened last has no forecast yet
+    {
+        // The route opened last is the BVS test file, whose dates are fixed (early November 2026). Once the calendar has
+        // passed them the forecast has nothing for it, "Read currents" has no rows to read and this check stopped the
+        // whole run (found 2026-11-13). So: the made-up route again, ETD = now, and its forecast.
+        await go(page, 'Route');
+        await page.setInputFiles('input[type=file]', fixture);
+        await page.waitForTimeout(300);
+        await page.locator('.g-card', { hasText: 'Times (UTC)' }).locator('.dtf__value').first().click();
+        await page.locator('.dtf__pop button', { hasText: /^Now$/ }).click();
+        await page.locator('.dtf__pop button', { hasText: /^OK$/ }).click();
+        await page.waitForTimeout(300);
+        await go(page, 'Weather');
         await page.locator('button', { hasText: /Get (latest )?forecast along route/ }).click();
+        await page.waitForSelector('.wo', { timeout: 5000 }).catch(() => {});
         await page.waitForSelector('.wo', { state: 'detached', timeout: 180000 });
+        await page.waitForTimeout(300);
     }
     await page.locator('button', { hasText: 'Read currents (exp.)' }).click();
     await page.waitForSelector('.wo', { timeout: 5000 });
@@ -1029,12 +1284,17 @@ async function go(page, name) {
     // nautical charts: OpenSeaMap tiles (the real server is not reachable from the test computer: a stand-in transparent tile)
     const png1 = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
     await page.route(/tiles\.openseamap\.org/, route => route.fulfill({ status: 200, contentType: 'image/png', body: png1 }));
+    await go(page, 'Map charts');
     await page.locator('.wavechart button', { hasText: 'Seamarks' }).click();
     await page.evaluate(() => window.__map.setView([51.9, 4.0], 10, { animate: false }));
     await page.waitForTimeout(800);
     const chartLegTxt = await page.locator(".pp-chart-legend").innerText().catch(() => '');
     ok(/OpenSeaMap/.test(chartLegTxt) && /Not for navigation/i.test(chartLegTxt), 'seamark overlay on, with source and "not for navigation" on the map: ' + chartLegTxt.replace(/\s+/g, ' ').slice(0, 90));
     ok((await page.locator('img[src*="openseamap"]').count()) > 0, 'seamark tiles requested');
+    ok((await page.locator('.pp-chart-legend .g-fw__gear').count()) === 1 && /not official charts/i.test(await page.locator('#pane').innerText()), 'nautical chart key has a gear; "not official charts" stays visible beside the chart buttons');
+    await page.locator('.pp-chart-legend .g-fw__close').click();
+    ok((await page.locator('.pp-chart-legend.g-fw--min').count()) === 1 && /Nautical chart/.test(await page.locator('.pp-chart-legend').innerText()), 'nautical chart key: ✕ only makes it small (credit and "not for navigation" stay while the chart is shown)');
+    await page.locator('.pp-chart-legend .g-fw__min').click();
     await page.screenshot({ path: `${out}/32-seamarks.png` });
     await page.locator('.wavechart button', { hasText: 'Seamarks' }).click();
     ok((await page.locator('.pp-chart-legend').count()) === 0, 'seamark overlay off again');
@@ -1110,6 +1370,214 @@ async function go(page, name) {
     const mdSec = await settings('Map display');
     await mdSec.locator('label', { hasText: 'Weather under the cursor' }).locator('input').check();
     ok((await page.locator('.cb').count()) === 1, 'cursor bar switched on again from Settings');
+    // floating window (owner, 2026-11-13): drag to move, corner to resize, ↺ original size and place
+    await page.waitForTimeout(900);
+    const cb0 = await page.locator('.cb').boundingBox();
+    await page.mouse.move(cb0.x + 25, cb0.y + 9);
+    await page.mouse.down();
+    await page.mouse.move(cb0.x + 125, cb0.y + 209, { steps: 6 });
+    await page.mouse.up();
+    const cb1 = await page.locator('.cb').boundingBox();
+    ok(Math.abs(cb1.x - cb0.x - 100) < 6 && Math.abs(cb1.y - cb0.y - 200) < 6, `cursor bar moves by dragging (${Math.round(cb0.x)},${Math.round(cb0.y)} → ${Math.round(cb1.x)},${Math.round(cb1.y)})`);
+    const cbc = await page.locator('.cb .g-fw__grip--c').boundingBox();
+    await page.mouse.move(cbc.x + 5, cbc.y + 5);
+    await page.mouse.down();
+    // (made wider, not narrower: with the mouse on the bar and not on the map the bar is short, already near its
+    // smallest width of 260 px, so dragging it 200 px narrower could never pass; found 2026-11-13)
+    await page.mouse.move(cbc.x + 200, cbc.y + 60, { steps: 6 });
+    await page.mouse.up();
+    const cb2 = await page.locator('.cb').boundingBox();
+    ok(cb2.width > cb1.width + 150, `cursor bar resizes (${Math.round(cb1.width)} → ${Math.round(cb2.width)} px wide)`);
+    await page.locator('.cb button[aria-label="Original size and place"]').click();
+    await page.waitForTimeout(1000);
+    const cb3 = await page.locator('.cb').boundingBox();
+    ok(Math.abs(cb3.y - cb0.y) < 3 && Math.abs(cb3.x - cb0.x) < 3, 'cursor bar back to its original size and place with ↺');
+    // ship window: moved, then ↺ puts it back
+    const sbh = await page.locator('.sb .sb__head').boundingBox();
+    const sb0 = await page.locator('.sb').boundingBox();
+    await page.mouse.move(sbh.x + 30, sbh.y + 6);
+    await page.mouse.down();
+    await page.mouse.move(sbh.x + 230, sbh.y + 106, { steps: 5 });
+    await page.mouse.up();
+    const sb1 = await page.locator('.sb').boundingBox();
+    await page.locator('.sb .sb__btn[title^="Original size"]').click();
+    const sb2 = await page.locator('.sb').boundingBox();
+    ok(Math.abs(sb1.x - sb0.x - 200) < 6 && Math.abs(sb2.x - 12) < 2 && Math.abs(sb2.y - 70) < 2, `ship window moves, and ↺ puts it back to its original size and place (${Math.round(sb1.x)} → ${Math.round(sb2.x)})`);
+
+    // Port weather and tides (owner, 2026-11-13): pick a place on the map → 7 days every hour, tide, sun / moon, PDF
+    {
+        const H = 3600;
+        const t0 = Math.floor(Date.now() / 86400e3) * 86400 - 86400;
+        const time = Array.from({ length: 9 * 24 }, (_, i) => t0 + i * H);
+        const marine = {
+            hourly_units: { ocean_current_velocity: 'km/h', sea_level_height_msl: 'm' },
+            hourly: {
+                time,
+                sea_level_height_msl: time.map(t => 2.6 * Math.cos((2 * Math.PI * (t - t0 - 3 * H)) / (12.42 * H))),
+                ocean_current_velocity: time.map((t, i) => 1.5 + Math.sin(i / 3)),
+                ocean_current_direction: time.map((t, i) => (i * 7) % 360),
+                sea_surface_temperature: time.map(() => 13.4),
+                wind_wave_height: time.map((t, i) => 1 + 0.5 * Math.sin(i / 6)),
+                wind_wave_period: time.map(() => 5),
+                wind_wave_direction: time.map(() => 250),
+            },
+        };
+        const marineUrls = [];
+        const onReq = r => /marine-api\.open-meteo\.com/.test(r.url()) && marineUrls.push(r.url());
+        page.on('request', onReq);
+        const marineFake = route => {
+            return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(marine) });
+        };
+        await page.route(/marine-api\.open-meteo\.com/, marineFake);
+        await go(page, 'Weather');
+        await page.locator('.g-seg__opt', { hasText: 'Port weather' }).click();
+        await page.locator('button', { hasText: 'Pick on the map' }).click();
+        const wpsBeforePick = await page.evaluate(() => JSON.parse(localStorage.getItem('windy-plugin-passage-plan:v1')).route.waypoints.length);
+        ok(/Click the place on the map/.test(await page.locator('.pp-maptool').innerText().catch(() => '')) && /does not add a waypoint/.test(await page.locator('.pp-maptool').innerText().catch(() => '')), 'map tool: a note on the map says the next click picks the place');
+        const pm = await page.locator('#map').boundingBox();
+        await page.mouse.click(pm.x + pm.width * 0.55, pm.y + pm.height * 0.62);
+        await page.waitForSelector('.pw__day', { timeout: 60000 });
+        await page.waitForTimeout(500);
+        ok((await page.evaluate(() => JSON.parse(localStorage.getItem('windy-plugin-passage-plan:v1')).route.waypoints.length)) === wpsBeforePick, 'picking a place on the map does not add a waypoint');
+        ok((await page.locator('.pp-maptool').count()) === 0, 'map tool: the note goes after the one pick');
+        ok((await page.locator('.pp-pick-dot').count()) === 1, 'the chosen place is marked on the map');
+        const marineAsked = decodeURIComponent(marineUrls.join(' '));
+        ok(/sea_level_height_msl/.test(marineAsked) && /ocean_current_velocity/.test(marineAsked) && /sea_surface_temperature/.test(marineAsked), 'tide, current and sea temperature asked from Open-Meteo marine' + (marineAsked ? '' : ` [requests seen: ${marineUrls.length}]`));
+        ok((await page.locator('.pw__day').count()) === 7, 'port weather: 7 days');
+        const pwTxt = await page.locator('#pane').innerText();
+        ok(/Sunrise \d\d:\d\d · sunset \d\d:\d\d/.test(pwTxt) && /Moonrise (\d\d:\d\d|—) · moonset/.test(pwTxt), 'sunrise, sunset, moonrise and moonset (UTC)');
+        ok(/HW \d\d:\d\d [\d.-]+ m/.test(pwTxt) && /LW \d\d:\d\d/.test(pwTxt) && /not chart datum/.test(pwTxt), 'tide with high and low water, and the datum warning');
+        ok(/Open-Meteo marine/.test(pwTxt) && /fetched/.test(pwTxt), 'says where the data come from and when fetched');
+        const phRows = await page.locator('table.ph tbody tr:not(.ph__day)').count();
+        ok(phRows === 24, `every hour of the day in the table (${phRows} rows)`);
+        const phHead = await page.locator('table.ph thead').innerText();
+        ok(['Wind', 'Gust', 'SWH', 'Sea', 'Swell 1', 'Swell 2', 'kW/m', 'Air', 'Feels', 'Sea °C', 'Current', 'Rain', 'Tide'].every(w => phHead.includes(w)), 'hourly columns: wind, gust, SWH, sea, swell 1 and 2, power, air, feels like, sea temperature, current, rain, tide');
+        ok((await page.locator('table.ph tbody svg.g-dir').count()) > 50, 'arrows for wind, waves and current');
+        await page.screenshot({ path: `${out}/35-port-weather.png` });
+        const [pwDl] = await Promise.all([page.waitForEvent('download'), page.locator('.g-card__actions button', { hasText: 'PDF' }).first().click()]);
+        const pwPath = `${out}/port-weather.pdf`;
+        await pwDl.saveAs(pwPath);
+        const pwPdf = fs.readFileSync(pwPath).toString('latin1');
+        ok(pwPdf.startsWith('%PDF') && Number((pwPdf.match(/\/Count (\d+)/) || [0, 0])[1]) >= 4, `port weather PDF (${pwDl.suggestedFilename()}, ${(pwPdf.length / 1024).toFixed(0)} KB)`);
+        await page.locator('button', { hasText: 'Full size' }).click();
+        ok((await page.locator('.pp-overlay table.ph tbody tr:not(.ph__day)').count()) === 7 * 24, 'full size: all 7 days, every hour');
+        await page.locator('.pp-overlay button', { hasText: 'Close' }).click();
+        await page.locator('.g-seg__opt', { hasText: 'Tides' }).click();
+        await page.waitForTimeout(300);
+        ok((await page.locator('.tg svg path').count()) >= 2 && (await page.locator('.tg svg circle').count()) >= 6, 'tide graph with high and low waters');
+        ok((await page.locator('.tp__grid tbody tr').count()) === 24, 'hourly tide heights: 24 hours × the days');
+        await page.screenshot({ path: `${out}/36-tides.png` });
+        const [tdDl] = await Promise.all([page.waitForEvent('download'), page.locator('.g-card__actions button', { hasText: 'PDF' }).first().click()]);
+        const tdPath = `${out}/tides.pdf`;
+        await tdDl.saveAs(tdPath);
+        ok(fs.readFileSync(tdPath).toString('latin1').startsWith('%PDF'), `tide PDF (${tdDl.suggestedFilename()})`);
+        // a pick wins over "click on a course line inserts a waypoint": pick exactly on the course line
+        await page.locator('.g-seg__opt', { hasText: 'Port weather' }).click();
+        const wpsNow = await page.evaluate(() => JSON.parse(localStorage.getItem('windy-plugin-passage-plan:v1')).route.waypoints);
+        await page.evaluate(w => window.__map.fitBounds(w.map(p => [p.lat, p.lon]), { animate: false }), wpsNow);
+        await page.waitForTimeout(500);
+        // a point on a course line, and a point on open water, that are on the bare map (not under a floating window or a symbol)
+        const freeAt = (pts) => page.evaluate(ps => {
+            const r = document.getElementById('map').getBoundingClientRect();
+            for (const p of ps) {
+                const x = p.x + r.left, y = p.y + r.top;
+                const e = document.elementFromPoint(x, y);
+                if (e && e.closest('#map') && !e.closest('.leaflet-marker-pane, .leaflet-control')) return { x, y };
+            }
+            return null;
+        }, pts);
+        const legPts = await page.evaluate(w => { const m = window.__map; const out = []; for (let i = 0; i + 1 < w.length; i++) for (const f of [0.5, 0.35, 0.65, 0.2, 0.8]) { const a = m.latLngToContainerPoint([w[i].lat, w[i].lon]); const b = m.latLngToContainerPoint([w[i + 1].lat, w[i + 1].lon]); out.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f }); } return out; }, wpsNow);
+        const legMid = await freeAt(legPts.reverse()); // RL legs are straight on the map
+        const water = await freeAt(legPts.flatMap(p => [{ x: p.x + 90, y: p.y + 110 }, { x: p.x - 90, y: p.y + 110 }, { x: p.x + 90, y: p.y - 110 }]));
+        ok(!!legMid && !!water, 'test points found on the bare map (a course line, open water)');
+        const placeBefore = localStoragePlace(await page.evaluate(() => localStorage.getItem('windy-plugin-passage-plan:place')));
+        await page.locator('button', { hasText: 'Pick on the map' }).click();
+        await page.mouse.click(legMid.x, legMid.y);
+        await page.waitForTimeout(600);
+        const placeAfter = localStoragePlace(await page.evaluate(() => localStorage.getItem('windy-plugin-passage-plan:place')));
+        ok((await page.evaluate(() => JSON.parse(localStorage.getItem('windy-plugin-passage-plan:v1')).route.waypoints.length)) === wpsNow.length && placeAfter !== placeBefore, 'a pick on a course line picks the place and does not insert a waypoint (the pick wins)');
+        // right-click on open water: the plugin's own short menu
+        await page.mouse.click(water.x, water.y, { button: 'right' });
+        await page.waitForTimeout(200);
+        const menuItems = await page.locator('.pp-menu__item').allInnerTexts();
+        ok(menuItems.length === 3 && /Port weather here/.test(menuItems[0]) && /Tides here/.test(menuItems[1]) && /Add waypoint here/.test(menuItems[2]), 'right-click on open water: Port weather here · Tides here · Add waypoint here');
+        await page.locator('.pp-menu__item', { hasText: 'Tides here' }).click();
+        await page.waitForTimeout(800);
+        ok((await page.locator('.g-shell > .g-seg button.is-on').innerText()).includes('Tides') && localStoragePlace(await page.evaluate(() => localStorage.getItem('windy-plugin-passage-plan:place'))) !== placeAfter && (await page.evaluate(() => JSON.parse(localStorage.getItem('windy-plugin-passage-plan:v1')).route.waypoints.length)) === wpsNow.length, '"Tides here" opens Weather → Tides for that point, route unchanged');
+        await page.locator('.g-seg__opt', { hasText: 'Along route' }).click();
+        await page.unroute(/marine-api\.open-meteo\.com/, marineFake);
+        page.off('request', onReq);
+    }
+
+    // Weather by itself (owner, 2026-11-19): downloads that work with the tab hidden, after route changes, the area box
+    {
+        const H = 3600;
+        const t0 = Math.floor(Date.now() / 86400e3) * 86400 - 2 * 86400;
+        const time = Array.from({ length: 12 * 24 }, (_, i) => t0 + i * H);
+        const counts = { marine: 0, vis: 0 };
+        const mFake = r => {
+            counts.marine++;
+            return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ hourly_units: { ocean_current_velocity: 'km/h' }, hourly: { time, wind_wave_height: time.map((t, i) => 1 + Math.sin(i / 8)), wind_wave_direction: time.map(() => 250), wind_wave_period: time.map(() => 5), ocean_current_velocity: time.map(() => 1.852), ocean_current_direction: time.map(() => 120) } }) });
+        };
+        const vFake = r => {
+            counts.vis++;
+            return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ hourly: { time, visibility: time.map(() => 9000) } }) });
+        };
+        await page.route(/marine-api\.open-meteo\.com/, mFake);
+        await page.route(/api\.open-meteo\.com\/v1\/forecast/, vFake);
+        const wr = await settings('Weather reading');
+        for (const [txt, want] of [['Update the weather by itself', true], ['Fetch the forecast again every 3 hours', true], ['Download sea, currents and visibility', true], ["Also read Windy's own map", false]]) {
+            const cb = wr.locator('label', { hasText: txt }).locator('input');
+            if ((await cb.isChecked()) !== want) await cb.click();
+        }
+        ok((await wr.locator('label', { hasText: 'Update the weather by itself' }).count()) === 1 && (await wr.locator('label', { hasText: 'Download sea, currents and visibility' }).count()) === 1, 'Settings → Weather reading: by itself after route changes, every 3 hours, downloads that work with the tab hidden, Windy map optional');
+        // the forecast with the tab hidden: it must finish (nothing is read from Windy's drawn map any more)
+        await go(page, 'Weather');
+        await page.evaluate(() => { window.__hidden = true; document.dispatchEvent(new Event('visibilitychange')); });
+        await page.locator('button', { hasText: /Get (latest )?forecast along route/ }).click();
+        await page.waitForSelector('.wo', { state: 'detached', timeout: 120000 });
+        await page.evaluate(() => { window.__hidden = false; document.dispatchEvent(new Event('visibilitychange')); });
+        const hidTxt = await page.locator('#pane').innerText();
+        ok(/Done at \d\d:\d\d UTC: \d+ forecast points/.test(hidTxt) && counts.marine > 0 && counts.vis > 0, `forecast finishes with the tab hidden, sea / currents / visibility downloaded (${counts.marine} marine, ${counts.vis} visibility requests)`);
+        ok(/Sea, currents: Open-Meteo marine/.test(hidTxt), 'the weather data line says where sea, currents and visibility come from');
+        // a route change: the weather follows by itself, only the changed legs are fetched
+        const before = counts.marine;
+        await go(page, 'Route');
+        const lastLat = page.locator('.tablewrap tbody tr').last().locator('input.pos').first();
+        const oldLat = await lastLat.inputValue();
+        await lastLat.fill(oldLat.replace(/^(\d+)/, m => String(Math.min(80, Number(m) + 1)).padStart(m.length, '0')));
+        await lastLat.press('Enter');
+        await lastLat.blur();
+        await page.waitForFunction(() => /Updated by itself at/.test(document.querySelector('#pane')?.textContent || '') || /Updated by itself/.test(document.body.textContent || ''), null, { timeout: 30000 }).catch(() => {});
+        await go(page, 'Weather');
+        await page.waitForFunction(() => /Updated by itself at \d\d:\d\d UTC/.test(document.querySelector('#pane')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
+        const autoTxt = await page.locator('#pane').innerText();
+        const fetched = counts.marine - before;
+        ok(/Updated by itself at \d\d:\d\d UTC/.test(autoTxt) && !/The route changed after the forecast/.test(autoTxt), 'after a waypoint is moved the weather is updated by itself (no button)');
+        ok(fetched > 0 && fetched < before, `only the changed legs are fetched again (${fetched} new points, first time ${before})`);
+        ok(/By itself: after each route change · every 3 h/.test(autoTxt), 'the forecast card says what happens by itself');
+        // the area box
+        const aw = page.locator('[data-g=wx-area]');
+        await aw.locator('button', { hasText: 'Round the route' }).click();
+        const awTxt = await aw.innerText();
+        ok(/\d+ points, every (0\.5|1|2|3)°/.test(awTxt), 'area from the route: grid size shown');
+        await aw.locator('button', { hasText: 'Get weather' }).click();
+        await page.waitForSelector('.wo', { state: 'detached', timeout: 180000 });
+        await page.waitForTimeout(500);
+        ok(/Done at \d\d:\d\d UTC: \d+ of \d+ points/.test(await aw.innerText()) && /Next update by itself about \d\d:\d\d UTC/.test(await aw.innerText()), 'area weather downloaded, next update by itself shown');
+        ok((await page.locator('path.pp-wx-area').count()) === 1, 'the area is drawn on the map');
+        await page.screenshot({ path: `${out}/37-area-weather.png` });
+        await aw.locator('label.switch input').click();
+        ok((await page.locator('path.pp-wx-area').count()) === 0, 'area switched off: box gone from the map');
+        // back to the old way for anything after this
+        const wr2 = await settings('Weather reading');
+        for (const txt of ['Update the weather by itself', 'Fetch the forecast again every 3 hours']) {
+            const cb = wr2.locator('label', { hasText: txt }).locator('input');
+            if (await cb.isChecked()) await cb.click();
+        }
+        await page.unroute(/marine-api\.open-meteo\.com/, mFake);
+        await page.unroute(/api\.open-meteo\.com\/v1\/forecast/, vFake);
+    }
 
     // Updates: newer version found, one-click install through Windy, or the manual steps
     // two newer versions than this one: the plugin must find the newest

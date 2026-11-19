@@ -51,6 +51,8 @@
     }
     .wo__card {
         width: 340px;
+        max-width: calc(100vw - 16px);
+        box-sizing: border-box;
         background: var(--g-bg-1);
         box-shadow: var(--g-shadow);
         border-radius: 12px;

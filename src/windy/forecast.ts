@@ -16,6 +16,7 @@ import { calibrateWaveReading, readWave, type WaveReading } from '../lib/waveRea
 import { idbGet, idbPrune, idbSet } from '../lib/idbCache';
 import { dropIndices, fakeIndices, gaps, HISTORY_KEEP_MS, omToSeries, omUrls, partsOf, spliceSeries, stepOf, validSpan, withHistory } from '../lib/seriesMerge';
 import type { ShipPosition } from '../lib/model';
+import { extraFromJson, extraUrls, type Extra } from '../lib/marineExtra';
 
 type Arr = (number | null)[];
 type Payload = { data?: { data?: Record<string, unknown>; summary?: unknown; header?: { refTime?: string; update?: string; model?: string; sst?: number; daysAvail?: number } } };
@@ -54,6 +55,7 @@ export function setFreeFill(on: boolean): void {
 export function clearForecastCache(): void {
     cache.clear();
     omCache.clear();
+    extraCache.clear();
     skipStored = true;
 }
 
@@ -65,7 +67,17 @@ export const windyCoverage: { stepH: number | null; days: number | null; fakeDro
  * (ms), times in it that Windy does not cover are filled from Open-Meteo (if switched on), and if Windy fails
  * altogether Open-Meteo stands in.
  */
-export function fetchSeries(lat: number, lon: number, step: 1 | 3 = 1, range?: { start: number; end: number }): Promise<WxSeries> {
+export function fetchSeries(lat: number, lon: number, step: 1 | 3 = 1, range?: { start: number; end: number }, opts?: { extra?: boolean }): Promise<WxSeries> {
+    const base = fetchSeriesBase(lat, lon, step, range);
+    if (!opts?.extra) return base;
+    // sea, current and visibility downloaded with it (Open-Meteo), so nothing needs Windy's drawn map (2026-11-19)
+    return base.then(async s => {
+        const extra = await fetchExtra(lat, lon).catch(() => null);
+        return extra ? { ...s, extra } : s;
+    });
+}
+
+function fetchSeriesBase(lat: number, lon: number, step: 1 | 3, range?: { start: number; end: number }): Promise<WxSeries> {
     const key = `${lat.toFixed(2)},${lon.toFixed(2)},${step}`;
     let p = cache.get(key);
     if (!p) {
@@ -88,6 +100,7 @@ async function loadKept(key: string, lat: number, lon: number, step: 1 | 3): Pro
     if (!pruned) {
         pruned = true;
         idbPrune(IDB_PREFIX, KEEP_MS).catch(() => {});
+        idbPrune('mx:', KEEP_MS).catch(() => {});
         idbPrune(HIST_PREFIX, HISTORY_KEEP_MS).catch(() => {});
     }
     if (!skipStored) {
@@ -248,6 +261,45 @@ async function fillGaps(s: WxSeries, range: { start: number; end: number }): Pro
     return om ? spliceSeries(s, om, 'openmeteo', omLabel) : s;
 }
 
+// ---------- Sea, current and visibility downloaded with the forecast (Open-Meteo; owner's report 2026-11-19) ----------
+const extraCache = new Map<string, Promise<Extra | null>>();
+/** How the downloads went (for the Weather tab and the activity log) */
+export const extraStatus: { used: number; failed: number; lastError: string } = { used: 0, failed: 0, lastError: '' };
+/** Clear the memory so the next fetch asks again (fresh forecast / 3-hourly refresh) */
+export function clearExtraCache(): void {
+    extraCache.clear();
+}
+/** Sea (wind waves), current and visibility for a point, kept 3 h in the browser like the forecast (0.1° cells) */
+export function fetchExtra(lat: number, lon: number): Promise<Extra | null> {
+    const key = `${lat.toFixed(1)},${lon.toFixed(1)}`;
+    let p = extraCache.get(key);
+    if (p) return p;
+    p = (async () => {
+        const kept = skipStored ? undefined : await idbGet<Extra>(`mx:${key}`).catch(() => undefined);
+        if (kept && kept.fetchedAt && Date.now() - kept.fetchedAt < KEEP_MS && kept.ts?.length) return kept;
+        const u = extraUrls(Number(lat.toFixed(1)), Number(lon.toFixed(1)));
+        const [m, v] = await Promise.all([
+            getJson(u.marine).catch(e => {
+                extraStatus.lastError = `sea and currents: ${(e as Error).message}`;
+                return null;
+            }),
+            getJson(u.vis).catch(e => {
+                extraStatus.lastError = `visibility: ${(e as Error).message}`;
+                return null;
+            }),
+        ]);
+        const x = extraFromJson(m as never, v as never);
+        if (x) {
+            extraStatus.used++;
+            idbSet(`mx:${key}`, x).catch(() => {});
+        } else extraStatus.failed++;
+        return x;
+    })();
+    p.catch(() => extraCache.delete(key));
+    extraCache.set(key, p);
+    return p;
+}
+
 /** Run tasks with limited parallel requests, reporting progress. */
 export async function runLimited<T>(jobs: (() => Promise<T>)[], limit: number, onProgress?: (done: number) => void, signal?: { cancelled: boolean }): Promise<(T | null)[]> {
     const out: (T | null)[] = new Array(jobs.length).fill(null);
@@ -406,7 +458,7 @@ export async function sweep(
             const v = toArray(raw);
             if (kind === 'sea') {
                 const w = reading ? readWave(raw, reading) : null;
-                if (w && Number.isFinite(w.h)) out.set(t, { seaHs: w.h, seaDir: w.dir, seaPeriod: w.period, seaWindy: true });
+                if (w && Number.isFinite(w.h)) out.set(t, { seaHs: w.h, seaDir: w.dir, seaPeriod: w.period, seaWindy: true, seaSrc: 'windy' });
             } else if (kind === 'visibility') {
                 // ASSUMPTION: the first value is the visibility in metres (scalar layer)
                 if (Array.isArray(v) && isFinite(v[0]) && v[0] >= 0) out.set(t, { visNm: (v[0] as number) / 1852 });

@@ -65,10 +65,12 @@
             <p>Ports within {portNm} nm of the planned track and the canals, straits and capes it passes, in order, with the distance from the first waypoint, the distance to go and the ETA at the planned speeds (UTC).</p>
             <p>Positions are approximate: a guide to where you are, not a pilot book.</p>
         </Hint>
+        <Gear host="dist" chips={[{ id: 'charts' }]} />
         <div class="g-card__actions">
             <label class="ds-within">within <select bind:value={portNm}>{#each [10, 25, 50, 100] as n}<option value={n}>{n} nm</option>{/each}</select></label>
         </div>
     </div>
+    <SettingsFold host="dist" />
     {#if !$plan.legs.length}
         <p class="pp-note">Make a route first (Waypoints).</p>
     {:else if !along.length}
@@ -101,6 +103,8 @@
 </div>
 
 <script lang="ts">
+    import Gear from './base/Gear.svelte';
+    import SettingsFold from './settings/SettingsFold.svelte';
     import { map } from '@windy/map';
     import Hint from './base/Hint.svelte';
     import Icon from './base/Icon.svelte';

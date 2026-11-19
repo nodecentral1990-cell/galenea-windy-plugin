@@ -1,21 +1,24 @@
-<!-- Safe speed plan (owner, 2026-10-30): keep the track, avoid the chosen weather by slowing down,
-     speeding up, or stopping and drifting in open water. Shows each change and why, to help the
-     master decide. -->
+<!-- Safe speed and course plan (owner, 2026-10-30; course alteration 2026-11-13): avoid the chosen weather by
+     slowing down, speeding up, stopping and drifting in open water, or altering course for a while and coming
+     back to the track. Shows each change and why, to help the master decide. -->
 <div class="g-card">
 <div class="g-card__head">
-    <span class="g-card__title">Safe speed plan</span>
+    <span class="g-card__title">{$spSettings.allowAlter ? 'Safe speed and course plan' : 'Safe speed plan'}</span>
     <span class="g-chip">decision support: the master decides</span>
-    <Hint title="Safe speed plan" width={360}>
-        <p>Keeps <b>your track</b> and changes only the <b>speed</b> to keep out of the weather you chose: slow down so it passes ahead, speed up to get past before it comes, or <b>stop and drift</b> in open water until it has gone.</p>
-        <p>Speeds come from your RPM table only (fastest = top of the table), never a barred RPM. Weather: the forecast fetched in the Weather section. Land distance is from a coarse world map: no depths, traffic or shelter information.</p>
-        <p>Using it adds a waypoint where the speed changes or the ship stops (named e.g. "9.5 kn" or "Wait 12 h"), sets each leg's speed and the stops, and keeps a copy of your route as it was in Compare. Not included: currents, drift while stopped, depths, traffic. It does not replace official weather routing.</p>
+    <Hint title="Safe speed and course plan" width={360}>
+        <p>Keeps out of the weather you chose by changing the <b>speed</b> (slow down so it passes ahead, speed up to get past before it comes, or <b>stop and drift</b> in open water until it has gone) and, if switched on, by <b>altering course</b> for a while (e.g. 40° to starboard to take the sea on the bow instead of the beam) and then coming <b>back to the track</b>.</p>
+        <p>Speeds come from your RPM table only (fastest = top of the table), never a barred RPM. Weather: the forecast fetched in the Weather section; off the track it is taken from the nearest forecast point along the route, so course alterations are mainly for limits that depend on the heading (sea and swell on the bow / beam / quarter, IMO warnings, roll and pitch). To go round a storm, use Change the track. Land distance is from a coarse world map: no depths, traffic or shelter information.</p>
+        <p>Using it adds a waypoint where the speed or course changes or the ship stops (named e.g. "9.5 kn", "Stbd 40° 12.0 kn", "Rejoin track" or "Wait 12 h"), sets each leg's speed and the stops, and keeps a copy of your route as it was in Compare. Not included: currents, drift while stopped, depths, traffic. It does not replace official weather routing.</p>
     </Hint>
+    <Gear host="plan" chips={PLAN_CHIPS} />
 </div>
+<SettingsFold host="plan" />
 <div class="set">
-    <Icon name="sliders" size={14} /> Avoiding: <b>{avoidedText || 'nothing chosen'}</b> ({$spSettings.level === 1 ? 'amber alerts and red limits' : 'red limits'}) ·
-    stops {$spSettings.allowStop ? `allowed ≥ ${$spSettings.minLandNm} nm from land` : 'not allowed'} · changes at most every {$spSettings.stepH} h · fuel when stopped: {$spSettings.stopFuel != null ? `${$spSettings.stopFuel} t/day` : 'not counted'}
-    <button class="pp-btn pp-btn--ghost small" on:click={() => openSettings('speedplan')}>Change</button>
+    Avoiding: <b>{avoidedText || 'nothing chosen'}</b> ({$spSettings.level === 1 ? 'amber alerts and red limits' : 'red limits'}) ·
+    stops {$spSettings.allowStop ? `allowed ≥ ${$spSettings.minLandNm} nm from land` : 'not allowed'} · course alterations {$spSettings.allowAlter ? `up to ${$spSettings.maxAlterDeg}°, ≤ ${$spSettings.maxOffNm} nm off the track` : 'not allowed'} · changes at most every {$spSettings.stepH} h · fuel when stopped: {$spSettings.stopFuel != null ? `${$spSettings.stopFuel} t/day` : 'not counted'}
+    <Gear host="plan-line" line chips={PLAN_CHIPS} />
 </div>
+<SettingsFold host="plan-line" />
 
 {#if $route.waypoints.length < 2 || $plan.etd == null}
     <div class="g-empty"><Icon name="lifebuoy" size={30} /><p>Make the route and set the ETD first (Route → Waypoints).</p></div>
@@ -29,7 +32,7 @@
     </div>
     <p class="pp-note">Starts {$plan.fix ? 'from your present position' : 'at WP1 at the ETD'}: <b>{fmtTime($plan.fix ? $plan.fix.t : $plan.etd)} UTC</b>.</p>
     <div class="row">
-        <button class="pp-btn g-btn--primary" disabled={!wxOk} on:click={() => runSpeedPlan(arrive, own ?? $plan.eta)}><Icon name="lifebuoy" size={15} /> Work out a safe speed plan</button>
+        <button class="pp-btn g-btn--primary" disabled={!wxOk} on:click={() => runSpeedPlan(arrive, own ?? $plan.eta)}><Icon name="lifebuoy" size={15} /> {$spSettings.allowAlter ? 'Work out a safe speed and course plan' : 'Work out a safe speed plan'}</button>
         {#if !wxOk}<span class="g-status g-status--warn">Get the forecast first (Weather → Get forecast).</span>{/if}
     </div>
     {#if $spStatus}<p class="status">{$spStatus}</p>{/if}
@@ -54,23 +57,23 @@
                         <td>{dh(o.res.safe.hours)} <span class="delta">({sign(o.res.safe.hours - o.res.planned.hours)} h)</span></td>
                         <td class="g">{o.res.safe.fuel.toFixed(1)} <span class="delta">({sign(o.res.safe.fuel - o.res.planned.fuel, 1)})</span></td>
                         <td class="g" class:bad={o.res.safe.badH > 0} class:good={o.res.safe.badH === 0}>{o.res.safe.badH.toFixed(0)}</td>
-                        <td class="g wrap">{o.res.mode === 'hard' ? 'nothing you chose to avoid' : 'some: speed alone cannot avoid it all'}</td>
+                        <td class="g wrap">{o.res.mode === 'hard' ? 'nothing you chose to avoid' : o.res.segments.some(g => g.alter) ? 'some: speed and course alterations cannot avoid it all' : 'some: speed alone cannot avoid it all'}</td>
                     </tr>
                 </tbody>
             </table>
         </div>
 
         <!-- time strip: speed and stops along the voyage -->
-        <div class="strip" title="Speed along the voyage: darker = faster, orange = stopped">
+        <div class="strip" title="Speed along the voyage: darker = faster, orange = stopped, purple = course altered">
             {#each o.res.segments as seg}
-                <span style="flex:{Math.max(0.5, (seg.toMs - seg.fromMs) / 3.6e6)};background:{stripColor(seg)}" title="{fmtTime(seg.fromMs)}–{fmtTime(seg.toMs)} UTC: {seg.action === 'stop' ? 'stopped' : seg.sicw.toFixed(1) + ' kn'}">{seg.action === 'stop' ? '⏸' : seg.sicw.toFixed(0)}</span>
+                <span style="flex:{Math.max(0.5, (seg.toMs - seg.fromMs) / 3.6e6)};background:{stripColor(seg)}" title="{fmtTime(seg.fromMs)}–{fmtTime(seg.toMs)} UTC: {seg.action === 'stop' ? 'stopped' : seg.sicw.toFixed(1) + ' kn'}{seg.alter ? `, course ${deg(seg.heading)}` : ''}">{seg.action === 'stop' ? '⏸' : seg.alter ? (seg.alter > 0 ? '↱' : '↰') : seg.sicw.toFixed(0)}</span>
             {/each}
         </div>
 
         <h4>What to do and why</h4>
         <div class="pp-scroll tw">
             <table class="tbl segs">
-                <thead><tr><th>From UTC</th><th>To UTC</th><th class="g">Do</th><th>Speed kn</th><th>RPM</th><th class="g">Where it starts</th></tr></thead>
+                <thead><tr><th>From UTC</th><th>To UTC</th><th class="g">Do</th><th>Speed kn</th><th>RPM</th><th class="g" title="Course to steer (true)">Course</th><th class="g">Where it starts</th></tr></thead>
                 <tbody>
                     {#each o.res.segments as seg, i}
                         <tr class="seg" class:stop={seg.action === 'stop'}>
@@ -79,10 +82,11 @@
                             <td class="g"><b>{doText(seg)}</b></td>
                             <td>{seg.action === 'stop' ? '0' : seg.sicw.toFixed(1)}</td>
                             <td>{seg.rpm ?? '—'}</td>
+                            <td class="g" class:altc={seg.alter !== 0}>{seg.action === 'stop' ? '—' : deg(seg.heading)}{seg.alter ? ` (${seg.alter > 0 ? '+' : '−'}${Math.abs(seg.alter)}°)` : ''}</td>
                             <td class="g">{fmtLat(seg.from.lat, 1)} {fmtLon(seg.from.lon, 1)}</td>
                         </tr>
                         <tr class:stop={seg.action === 'stop'}>
-                            <td colspan="6" class="why" class:badwhy={seg.badH > 0}>
+                            <td colspan="7" class="why" class:badwhy={seg.badH > 0}>
                                 <b>Why:</b> {seg.why}
                                 {#if seg.action === 'stop' && o.drift[i]}<br /><i>Drift estimate {o.drift[i]?.kn.toFixed(1)} kn towards {deg(o.drift[i]?.toward)}: about {((o.drift[i]?.kn ?? 0) * (seg.toMs - seg.fromMs) / 3.6e6).toFixed(0)} nm while stopped (wind only; check sea room).</i>{/if}
                             </td>
@@ -100,7 +104,7 @@
         {#if o.res.notes.length}<ul class="notes">{#each o.res.notes as n}<li>{n}</li>{/each}</ul>{/if}
         {#if o.runInfo}<div class="g-prov"><Icon name="calendar" size={14} /> <span>Weather data: {o.runInfo.air} · waves {o.runInfo.waves} · fetched {o.runInfo.fetched}. Work the plan out again with each new forecast.</span></div>{/if}
         <div class="row">
-            <button class="pp-btn g-btn--primary" disabled={stale || o.taken} on:click={take}><Icon name="check" size={15} /> Use this speed plan in my route</button>
+            <button class="pp-btn g-btn--primary" disabled={stale || o.taken} on:click={take}><Icon name="check" size={15} /> Use this plan in my route</button>
             {#if o.taken}<span class="g-status g-status--ok">Taken. The route as it was is in Compare.</span>{/if}
         </div>
     {:else if o && !o.res.ok}
@@ -117,9 +121,17 @@
     import { plan, planKey, route, vessel, wxPlanKey, wxSeries } from '../state';
     import { AVOID_LABEL, runSpeedPlan, spOutcome, spRouteKey, spSettings, spStatus, takeSpeedPlan, type AvoidKind } from '../windy/speedPlanJob';
     import DateTimeField from './DateTimeField.svelte';
-    import { openSettingsSection } from './SettingsTab.svelte';
+    import Gear from './base/Gear.svelte';
+    import SettingsFold from './settings/SettingsFold.svelte';
 
-    export let onSettings: (() => void) | null = null;
+    // the plan depends on four groups: all four in the same fold-out, no round trips to Settings
+    const PLAN_CHIPS = [
+        { id: 'speedplan', label: 'Plan' },
+        { id: 'limits', label: 'Weather limits' },
+        { id: 'speed', part: 'barred', label: 'Barred RPM' },
+        { id: 'motion', part: 'marks', label: 'Roll and pitch marks' },
+        { id: 'ship', part: 'particulars', label: 'Ship (drift)' },
+    ];
 
     let arrive: 'planned' | 'earliest' | 'own' = 'planned';
     let own: number | null = null;
@@ -139,23 +151,26 @@
     const sign = (x: number, dp = 0) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(dp)}`;
     function doText(seg: PlanSegment): string {
         if (seg.action === 'stop') return '⏸ Stop and drift';
+        if (seg.alter !== 0) {
+            const away = Math.abs(seg.offTo) > Math.abs(seg.offFrom);
+            return away ? `${seg.alter > 0 ? '↱' : '↰'} Alter ${Math.abs(seg.alter)}° to ${seg.alter > 0 ? 'starboard' : 'port'}` : `${seg.alter > 0 ? '↱' : '↰'} Back to the track`;
+        }
+        if (Math.abs(seg.offFrom) > 2.5) return '∥ Parallel to the track';
         const d = seg.sicw - seg.plannedSicw;
         return d < -0.3 ? '▼ Slow down' : d > 0.3 ? '▲ Speed up' : '● As planned';
     }
     function stripColor(seg: PlanSegment): string {
         if (seg.action === 'stop') return '#d95926';
+        if (seg.alter !== 0) return '#7a52c7';
         const f = Math.max(0.15, seg.sicw / maxV);
         return `rgba(57, 135, 229, ${f.toFixed(2)})`;
     }
     function take() {
         if (!o) return;
         const n = o.res.segments.length;
-        if (!confirm(`Put this speed plan into your route? Up to ${n} waypoints are added where the speed changes or the ship stops; leg speeds and stops are set. A copy of your route as it is now goes to the Compare tab.`)) return;
+        const alt = o.res.segments.some(g => g.alter !== 0);
+        if (!confirm(`Put this plan into your route? Up to ${n + (alt ? n : 0)} waypoints are added where the speed${alt ? ' or the course' : ''} changes or the ship stops${alt ? '; planned waypoints passed while off the track are left out' : ''}; leg speeds and stops are set. A copy of your route as it is now goes to the Compare tab.`)) return;
         takeSpeedPlan();
-    }
-    function openSettings(id: string) {
-        openSettingsSection(id);
-        onSettings?.();
     }
 </script>
 
@@ -229,6 +244,10 @@
         }
         td.good {
             color: #7fe39a;
+            font-weight: bold;
+        }
+        td.altc {
+            color: #c7b0ff;
             font-weight: bold;
         }
         tr.safe td {

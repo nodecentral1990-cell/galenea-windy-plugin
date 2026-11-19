@@ -10,6 +10,21 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.26.0',
+        date: '2026-11-13',
+        notes: [
+            'Safe speed and course plan (Optimise → Speed & course): besides slowing down, speeding up and stopping, the plan can now alter course for a while (20°, 40° or 60° to port or starboard, for 3 to 12 hours) and then come back to the track, where that keeps the ship out of the weather you chose to avoid (e.g. a beam sea taken on the bow instead). Each part says the course to steer and why. Switch, largest alteration and furthest distance off the track: Settings → Safe speed and course plan.',
+            'Port weather (Weather → Port weather): click any place on the map, or type a port name, for the weather there every hour for 7 days: wind and gusts with arrows, SWH, sea, swell 1 and swell 2 (height, period, arrow), wave power, air temperature and feels like, sea temperature, current with an arrow, rain, weather in words (cloudy, rain, windy…), the tide with high and low water, sunrise / sunset and moonrise / moonset. Name and lat / lon shown. Save it as a PDF.',
+            'Tides (Weather → Tides): for any place, a tide graph, the high and low waters with times and heights, and the height every hour; PDF too. The tide is a model sea level (Open-Meteo marine, Météo-France) above mean sea level, not chart datum: a guide, not the official tide tables.',
+            'New look: a small gear beside each function opens its settings right there (the Settings tab still has them all, now with a search box and "Used in" links). A voyage strip under the title shows the next step, the worst weather ahead and how old the forecast is. Weather has four views: Along route, Port weather, Tides and Map charts (the wave, roll and nautical charts, was "On the map"). "Polar settings", "Optimisation settings" and "Change" are now gears; the Voyage card is under the waypoints.',
+            'Map: while a click does something (add waypoints, pick a place) a note shows at the top of the map; Esc stops it. Right-click on open water: Port weather here, Tides here, Add waypoint here.',
+            'Weather by itself: change a waypoint and the weather follows in a couple of seconds (only the changed legs are downloaded again); it is also fetched again every 3 hours while the plugin is open. Sea, currents and visibility now come downloaded with the forecast (Open-Meteo, free), so changing tab or minimising the browser no longer stops it. Reading Windy\'s own map is still there as an extra (Settings → Weather reading), and its values are used when read.',
+            'Weather for an area (Weather → Along route): type the north and south latitude and the west and east longitude (or take the map view or the route), press Get weather: the forecast over the whole box, drawn on the map, fetched again every 3 hours. Try different tracks inside it without waiting for downloads.',
+            'Phones: a Back button at the top of every full-screen window (graphs, full-size tables, Help, settings), nothing hidden under the phone\'s clock and battery bar, the section buttons stay at the top while you scroll, everything fits narrow phones (320 px), touching a graph reads it, and a phone held sideways keeps the phone layout.',
+            'Every floating window (ship window, graphs, weather bar under the cursor, wave / roll / nautical chart keys, full-size tables) can be moved by its title bar, resized by its edges or corner, minimised (–), put back to its original size and place (↺) and closed (✕). Settings → Map display: show closed windows again, or put all windows back to their original size.',
+        ],
+    },
+    {
         version: '0.25.0',
         date: '2026-11-07',
         notes: [

@@ -2,14 +2,19 @@
      graphs, each with its own list box of values. Drag the top / right edge to resize, the title bar to
      move; – minimise, ▢ maximise, ✕ close (reopen with 📈 Graphs in the plugin). Hover to read the
      values, click to set Windy's time there. -->
-<div class="gp pp" data-g-dim={$panelDim ? '' : null} class:gp--max={st.mode === 'max'} class:gp--phone={$phone} class:gp--min={st.mode === 'min'} use:toBody style={boxStyle}>
-    {#if st.mode === 'normal'}
+<div class="gp pp" data-g-dim={$panelDim ? '' : null} class:gp--max={mode === 'max' && !$phone} class:gp--phone={$phone} class:gp--min={mode === 'min'} use:toBody style={boxStyle}>
+    {#if mode === 'normal' && !$phone}
         <div class="gp__edge gp__edge--top" on:pointerdown={e => resizeStart(e, 'top')} title="Drag to make the graphs taller or shorter" />
         <div class="gp__edge gp__edge--right" on:pointerdown={e => resizeStart(e, 'right')} title="Drag to make the window wider or narrower" />
+        <div class="gp__edge gp__edge--corner" on:pointerdown={e => resizeStart(e, 'corner')} title="Drag to resize" />
     {/if}
     <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="gp__head" on:pointerdown={moveStart} title="Drag to move" on:dblclick={() => setMode(st.mode === 'max' ? 'normal' : 'max')}>
+    <div class="gp__head" on:pointerdown={moveStart} title={$phone ? null : 'Drag to move'} on:dblclick={() => !$phone && setMode(st.mode === 'max' ? 'normal' : 'max')}>
+        <!-- phones (owner's report, 2026-11-19): the window covers the whole screen, so the way back is a big button at the
+             top left, kept below the phone's status bar (the stylesheet starts the window where Windy's panel starts) -->
+        {#if $phone}<button class="gp__back" on:click|stopPropagation={close} title="Close the graphs and go back to the plugin"><Icon name="back" size={18} /> Back</button>{/if}
         <b class="gp__title">📈 Graphs</b>
+        {#if $phone}<span class="gp__brk" />{/if}
         {#each [0, 1, 2] as i}
             <div class="gp__lb">
                 <label class="gp__sw" title={st.off[i] ? `Graph ${i + 1} is off: switch on` : `Switch graph ${i + 1} off (its choices are kept)`}
@@ -22,16 +27,20 @@
             </div>
         {/each}
         <span class="gp__sp" />
-        <button class="gp__btn gp__now" on:click|stopPropagation={goToNow} title="Set the map and the plugin to the present time (computer clock, UTC) with the ship in the middle">🕒 Now</button>
-        <button class="gp__btn" on:click|stopPropagation={() => setMode(st.mode === 'min' ? 'normal' : 'min')} title={st.mode === 'min' ? 'Restore' : 'Minimise'}>{st.mode === 'min' ? '▴' : '–'}</button>
-        <button class="gp__btn" on:click|stopPropagation={() => setMode(st.mode === 'max' ? 'normal' : 'max')} title={st.mode === 'max' ? 'Restore size' : 'Maximise'}>{st.mode === 'max' ? '❐' : '▢'}</button>
-        <button class="gp__btn" on:click|stopPropagation={close} title="Close (reopen with 📈 Graphs at the top of the plugin)">✕</button>
+        <button class="gp__btn gp__now" on:click|stopPropagation={goToNow} title="Set the map and the plugin to the present time (computer clock, UTC) with the ship in the middle"><Icon name="clock" size={13} /> Now</button>
+        {#if !$phone}
+            <button class="gp__btn" on:click|stopPropagation={() => setMode(st.mode === 'min' ? 'normal' : 'min')} title={st.mode === 'min' ? 'Restore' : 'Minimise'}><Icon name={st.mode === 'min' ? 'restore' : 'minimise'} size={13} /></button>
+            <button class="gp__btn" on:click|stopPropagation={() => setMode(st.mode === 'max' ? 'normal' : 'max')} title={st.mode === 'max' ? 'Restore size' : 'Maximise'}><Icon name={st.mode === 'max' ? 'compare' : 'expand'} size={13} /></button>
+        {/if}
+        {#if !$phone}<button class="gp__btn" on:click|stopPropagation={resetWin} title="Original size and place (drag the title bar to move, the top / right edge or the corner to resize)"><Icon name="reset" size={13} /></button>{/if}
+        <button class="gp__btn gp__x" on:click|stopPropagation={close} aria-label="Close the graph window" title="Close (reopen with the graph button at the top of the plugin)"><Icon name="x" size={$phone ? 18 : 13} /></button>
     </div>
     {#if openSlot != null}
         <div class="gp__pop pp-scroll" style={popStyle} on:pointerdown|stopPropagation>
             <div class="gp__pophead">
                 Graph {openSlot + 1}: switch on as many as you like · same unit = same axis
                 <button class="gp__clear" on:click={() => setSlot(openSlot ?? 0, [])}>All off</button>
+                {#if $phone}<button class="gp__clear gp__done" on:click={() => (openSlot = null)}>Done</button>{/if}
             </div>
             {#each GROUPS as g}
                 <div class="gp__grp">{g}</div>
@@ -44,7 +53,7 @@
             {/each}
         </div>
     {/if}
-    {#if st.mode !== 'min'}
+    {#if mode !== 'min'}
         <div class="gp__body" bind:clientWidth={bodyW} bind:clientHeight={bodyH}>
             {#if !rows.length}
                 <p class="gp__msg">{$route.waypoints.length < 2 ? 'Make or load a route first (Route tab).' : 'Set the ETD in the Route tab to see the voyage graphs.'}</p>
@@ -52,7 +61,7 @@
                 <p class="gp__msg">{st.slots.some((x, i) => x.length && st.off[i]) ? 'All graphs are switched off: use the switches next to the list boxes.' : 'Choose what to show in the list boxes 1, 2, 3 above.'}</p>
             {:else}
                 <!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
-                <div class="gp__plots" on:pointermove={hover} on:pointerleave={() => (hoverT = null)} on:click={clickTime}>
+                <div class="gp__plots" on:pointerdown={hover} on:pointermove={hover} on:pointerleave={() => !$phone && (hoverT = null)} on:click={clickTime}>
                     {#each graphs as g (g.slot)}
                         <div class="gp__legend">
                             {#each g.items as it}
@@ -96,9 +105,9 @@
                         {/each}
                     </svg>
                 </div>
-                <div class="gp__foot">
-                    <span><b>{readT === hoverT ? 'At pointer' : 'At map time'}: {fmtTime(readT)} UTC</b> · yellow line = map time, green dashed = now · click to set the map there</span>
-                    <span class="gp__muted">{runInfo ? `Weather: ${runInfo.air} · waves ${runInfo.waves} · fetched ${runInfo.fetched}` : 'No forecast for this plan yet: Weather tab → Get forecast (ship values only).'} RPM, power, slip, fuel from your speed table; roll / pitch are estimates. Planning aid only.</span>
+                <div class="gp__foot" bind:clientHeight={footSeen}>
+                    <span><b>{readT === hoverT ? ($phone ? 'At your finger' : 'At pointer') : 'At map time'}: {fmtTime(readT)} UTC</b> · yellow line = map time, green dashed = now · {$phone ? 'touch a graph to read it and set the map time there' : 'click to set the map there'}</span>
+                    <span class="gp__muted">{runInfo ? `Weather: ${runInfo.air} · waves ${runInfo.waves} · fetched ${runInfo.fetched}${$phone ? '.' : ''}` : 'No forecast for this plan yet: Weather tab → Get forecast (ship values only).'} {$phone ? 'Roll / pitch are estimates. Planning aid only.' : 'RPM, power, slip, fuel from your speed table; roll / pitch are estimates. Planning aid only.'}</span>
                 </div>
             {/if}
         </div>
@@ -107,12 +116,16 @@
 <svelte:window on:pointerdown={closePick} bind:innerWidth={winW} bind:innerHeight={winH} />
 
 <script lang="ts">
+    import Icon from './base/Icon.svelte';
     import { panelDim, phone } from '../state';
     import { phoneGraphOpen } from './graphState';
     import store from '@windy/store';
     import { onDestroy } from 'svelte';
 
-    import { graphState, type GraphMode } from './graphState';
+    import { defaultGraphState, graphState, type GraphMode } from './graphState';
+    import { onResetAll } from './floatWin';
+    import { updateSafeTop } from './phoneSafe';
+    updateSafeTop();
     import { axisPlan, GRAPH_SERIES, niceTicks, seriesById, type GraphCtx, type GraphSeries } from '../lib/graphSeries';
     import { buildRows, forecastInfo, type WxRow } from '../lib/weather';
     import { motionAt } from '../lib/motionEstimate';
@@ -134,6 +147,12 @@
 
     let st = $graphState;
     $: st = $graphState;
+    // phones: always the whole screen (minimise / maximise belong to the floating window on a computer)
+    $: mode = ($phone ? 'normal' : st.mode) as GraphMode;
+    let footSeen = 0;
+    // phones: taller rows for the per-value switches, and the foot note is allowed to wrap
+    $: legendH = $phone ? 38 : LEGEND_H;
+    $: footH = $phone ? Math.max(FOOT_H, footSeen) : FOOT_H;
     let winW = 1200;
     let winH = 800;
     let bodyW = 600;
@@ -144,7 +163,7 @@
     $: hours = $plan.etd != null && $plan.eta != null ? ($plan.eta - $plan.etd) / 3.6e6 : 0;
     $: stepH = hours <= 96 ? 1 : 3;
     $: rows =
-        st.open && st.mode !== 'min' && $plan.etd != null && $plan.eta != null && $route.waypoints.length > 1
+        ($phone || (st.open && st.mode !== 'min')) && $plan.etd != null && $plan.eta != null && $route.waypoints.length > 1
             ? buildRows($route, $plan, $vessel, $thresholds, stepH, wxOk ? $wxSeries : [], wxOk ? $wxSweepValid : undefined)
             : ([] as WxRow[]);
     $: times = rows.map(r => r.time);
@@ -184,7 +203,7 @@
 
     // ---- geometry ---------------------------------------------------------------------------------
     $: plotW = Math.max(200, bodyW);
-    $: graphH = graphs.length ? Math.max(40, Math.floor((bodyH - XAXIS_H - FOOT_H - 6) / graphs.length) - LEGEND_H) : 60;
+    $: graphH = graphs.length ? Math.max(40, Math.floor((bodyH - XAXIS_H - footH - 6) / graphs.length) - legendH) : 60;
     $: t0 = times[0] ?? 0;
     $: t1 = times[times.length - 1] ?? 1;
     $: xOf = (t: number) => ML + ((t - t0) / Math.max(1, t1 - t0)) * (plotW - ML - MR);
@@ -293,8 +312,9 @@
     const RIGHT_GAP = 540; // the plugin panel on the right
     $: autoW = Math.max(360, winW - st.left - RIGHT_GAP);
     $: w = st.mode === 'max' ? Math.max(360, winW - 20 - RIGHT_GAP) : (st.width ?? autoW);
+    // phones: placed by the stylesheet (ui/theme.ts): the whole screen below the phone's status bar
     $: boxStyle = $phone
-        ? `left:0;top:0;width:${winW}px;height:${winH}px`
+        ? ''
         : st.mode === 'max'
             ? `left:10px;top:60px;bottom:${st.bottom}px;width:${w}px`
             : st.mode === 'min'
@@ -329,7 +349,7 @@
         window.addEventListener('pointerup', up);
     }
     function moveStart(e: PointerEvent) {
-        if ((e.target as HTMLElement).closest('button, label, input') || st.mode === 'max') return;
+        if ($phone || (e.target as HTMLElement).closest('button, label, input') || st.mode === 'max') return;
         const { left, bottom } = st;
         drag(e, (dx, dy) =>
             graphState.update(s => ({
@@ -339,17 +359,24 @@
             })),
         );
     }
-    function resizeStart(e: PointerEvent, edge: 'top' | 'right') {
+    function resizeStart(e: PointerEvent, edge: 'top' | 'right' | 'corner') {
         const { height } = st;
         const width = w;
         drag(e, (dx, dy) =>
-            graphState.update(s =>
-                edge === 'top'
-                    ? { ...s, height: Math.max(130, Math.min(window.innerHeight - s.bottom - 40, height - dy)) }
-                    : { ...s, width: Math.max(360, Math.min(window.innerWidth - s.left - 10, width + dx)) },
-            ),
+            graphState.update(s => ({
+                ...s,
+                ...(edge !== 'right' ? { height: Math.max(130, Math.min(window.innerHeight - s.bottom - 40, height - dy)) } : {}),
+                ...(edge !== 'top' ? { width: Math.max(360, Math.min(window.innerWidth - s.left - 10, width + dx)) } : {}),
+            })),
         );
     }
+    /** Original design size and place (owner, 2026-11-13) */
+    function resetWin() {
+        const d = defaultGraphState();
+        graphState.update(s => ({ ...s, mode: 'normal', left: d.left, bottom: d.bottom, width: d.width, height: d.height }));
+    }
+    const offReset = onResetAll(resetWin);
+    onDestroy(offReset);
     function toBody(node: HTMLElement) {
         document.body.appendChild(node);
         return { destroy: () => node.remove() };
@@ -375,6 +402,16 @@
     .gp__edge {
         position: absolute;
         z-index: 2;
+        &--corner {
+            right: -4px;
+            top: -4px;
+            width: 14px;
+            height: 14px;
+            z-index: 3;
+            cursor: nesw-resize;
+            background: linear-gradient(45deg, transparent 50%, rgba(255, 255, 255, 0.35) 50%);
+            border-top-right-radius: 4px;
+        }
         &--top {
             left: 0;
             right: 0;
@@ -641,6 +678,8 @@
     /* phone: the whole screen, above the plugin panel (owner, 2026-11-02) */
     .gp.gp--phone {
         min-width: 0;
+        background: #181c21; /* solid: the panel must not show through */
+        backdrop-filter: none;
         border-radius: 0;
         z-index: 100001;
         .gp__legend {
@@ -669,6 +708,130 @@
         }
         .gp__btn {
             order: 1;
+            min-width: 40px;
+            min-height: 40px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            font-size: 14px;
+        }
+        .gp__brk {
+            order: 2;
+            flex: 0 0 100%;
+            height: 0;
+        }
+        .gp__lb {
+            order: 3;
+        }
+        /* phone held upright: one list box per row, so its choices can be read */
+        @media (max-width: 600px) {
+            .gp__lb {
+                flex: 1 1 100%;
+            }
+        }
+        .gp__back {
+            order: 0;
+            min-height: 40px;
+            padding: 0 14px 0 8px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            background: #2f6fd6;
+            color: #fff;
+            border: 0;
+            border-radius: 8px;
+            font: inherit;
+            font-size: 15px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        .gp__title {
+            font-size: 15px;
+        }
+        .gp__head {
+            padding: 6px 8px;
+            gap: 6px;
+        }
+        .gp__pick {
+            min-height: 40px;
+            font-size: 13px;
+        }
+        /* switches: the whole label is the touch target */
+        .gp__lb > .gp__sw {
+            min-height: 40px;
+            min-width: 38px;
+            justify-content: center;
+        }
+        .gp__sw .knob {
+            width: 34px;
+            height: 20px;
+            border-radius: 10px;
+            &::after {
+                width: 16px;
+                height: 16px;
+            }
+        }
+        .gp__sw input:checked + .knob::after {
+            left: 16px;
+        }
+        .gp__legend {
+            height: 38px;
+            gap: 14px;
+        }
+        .gp__li {
+            min-height: 38px;
+            font-size: 12px;
+        }
+        .gp__plots {
+            touch-action: none;
+        }
+        .gp__foot {
+            height: auto;
+            flex: none;
+            font-size: 11px;
+            padding: 3px 8px 6px;
+            span {
+                white-space: normal;
+            }
+        }
+        .gp__msg {
+            font-size: 15px;
+            padding: 16px 12px;
+        }
+        .gp__pop {
+            left: 8px !important;
+            right: 8px;
+            width: auto;
+            top: auto !important;
+            bottom: 8px !important;
+            max-height: 62vh !important;
+            font-size: 14px;
+        }
+        .gp__pophead {
+            font-size: 12px;
+            align-items: center;
+            position: sticky;
+            top: -4px;
+            background: #2b2b2b;
+            z-index: 1;
+            padding: 6px 0;
+        }
+        .gp__clear {
+            min-height: 38px;
+            padding: 0 12px;
+            font-size: 14px;
+            white-space: nowrap;
+        }
+        .gp__done {
+            margin-left: 0;
+            background: #2f6fd6;
+            color: #fff;
+            font-weight: bold;
+        }
+        .gp__opt {
+            min-height: 38px;
+            align-items: center;
         }
     }
 </style>

@@ -6,6 +6,7 @@
 // map view (coarser, smoothed). Windy's colour scale is replaced only while the plugin is open, and
 // put back on closing (including any colours the user had set in Windy).
 
+import { openSetWin } from '../ui/settings/foldState';
 import bcast from '@windy/broadcast';
 import colors from '@windy/colors';
 import { getLatLonInterpolator } from '@windy/interpolator';
@@ -34,6 +35,7 @@ import {
 import { fmtRun, sampleSeries, type WxSeries } from '../lib/weather';
 import { workEnd, workProgress, workStart } from '../state';
 import { fetchSeries, runLimited } from './forecast';
+import { mapKey, type MapKey } from '../ui/floatWin';
 
 const KEY = 'windy-plugin-passage-plan:wavecolors';
 function load(): WaveColorSettings {
@@ -273,7 +275,7 @@ export async function drawLines(): Promise<void> {
 
 // ---------- legend on the map ----------
 
-let legend: HTMLDivElement | null = null;
+let legend: MapKey | null = null;
 const LBL: Record<WaveLine, string> = { hs: 'SWH', sea: 'Sea', swell1: 'Swell 1', swell2: 'Swell 2' };
 const OVERLAY_NAME: Record<string, string> = { waves: 'SWH (waves)', wwaves: 'Sea (wind waves)', swell1: 'Swell 1', swell2: 'Swell 2', swell3: 'Swell 3', swell: 'Swell' };
 
@@ -290,11 +292,7 @@ function updateLegend(): void {
         waveChartStatus.set('');
         return;
     }
-    if (!legend) {
-        legend = document.createElement('div');
-        legend.className = 'pp pp-wave-legend';
-        document.body.appendChild(legend);
-    }
+    if (!legend) legend = mapKey('wavekey', 'pp pp-wave-legend', { minW: 220, gear: { title: 'Settings: Wave chart (your colours)', onClick: w => openSetWin([{ id: 'wavechart' }], w) } });
     const p = PALETTES.find(x => x.id === s.palette) ?? PALETTES[0];
     let bar = '';
     if (coloured) {
@@ -323,13 +321,14 @@ function updateLegend(): void {
         })
         .join('');
     const t = Number(store.get('timestamp'));
-    legend.innerHTML =
-        `<div class="wl-title">🌊 Wave chart · ${new Date(t).toISOString().slice(8, 10)} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][new Date(t).getUTCMonth()]} ${new Date(t).toISOString().slice(11, 16)} UTC</div>` +
+    legend.set(
+        `<span class="wl-title">🌊 Wave chart · ${new Date(t).toISOString().slice(8, 10)} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][new Date(t).getUTCMonth()]} ${new Date(t).toISOString().slice(11, 16)} UTC</span>`,
         (coloured
             ? `<div>Colours: <b>${OVERLAY_NAME[overlay] ?? overlay}</b> height (m), your scale, steps ${s.step} m, white below ${s.min[layer]} m</div>${bar}`
             : `<div>Colours: Windy's own (${OVERLAY_NAME[overlay] ?? overlay})</div>`) +
         (drawn.length ? `<div class="wl-sub">Lines of equal height every ${s.step} m (solid = whole metres):</div>${lineRows}` : '') +
-        `<div class="wl-src">ECMWF-WAM${first?.wavesRefTime ? ` run ${fmtRun(first.wavesRefTime)}` : ''}${fetchedAt ? ` · points fetched ${new Date(fetchedAt).toISOString().slice(11, 16)} UTC` : ''}. Guide only.</div>`;
+        `<div class="wl-src">ECMWF-WAM${first?.wavesRefTime ? ` run ${fmtRun(first.wavesRefTime)}` : ''}${fetchedAt ? ` · points fetched ${new Date(fetchedAt).toISOString().slice(11, 16)} UTC` : ''}. Guide only.</div>`,
+    );
     waveChartStatus.set(
         drawn.length
             ? drawn.map(d => `${LBL[d.line]}: ${d.source === 'windy' ? "Windy's map (fine)" : d.source === 'points' ? `points every ${grid?.step}°` : 'press "Load lines for this map view"'}`).join(' · ') +

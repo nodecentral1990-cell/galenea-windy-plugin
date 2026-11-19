@@ -101,3 +101,65 @@ test('taking the plan: waypoints where the speed changes, leg speeds and a stop'
     assert.equal(wps[2].delayH, null, 'old planned stop cleared');
     assert.equal(wps[1].name, 'Wait 6 h');
 });
+
+// Course alteration (owner, 2026-11-13): a beam swell between 100 and 200 nm that lasts the whole voyage.
+// Speed cannot avoid it; altering course 40° or more puts it on the bow / quarter.
+function beamSetup(over: Partial<SpeedPlanInput> = {}): SpeedPlanInput {
+    return setup({
+        allowStop: false,
+        wxAt: (lat, lon) => ({ sw1: lon * 60 >= 100 && lon * 60 <= 200 ? 6 : 1, sw1Dir: 0, lat }) as never,
+        hazards: (wx, heading) => {
+            const w = wx as { sw1: number; sw1Dir: number };
+            const rel = Math.abs(((w.sw1Dir - heading + 540) % 360) - 180); // 0 = on the bow, 90 = beam
+            return w.sw1 > 4 && rel > 60 && rel < 120 ? [{ what: 'Swell 1', level: 2, detail: `swell ${w.sw1} m on the beam` }] : [];
+        },
+        stepH: 3,
+        ...over,
+    });
+}
+
+test('course alteration: speed alone cannot avoid a beam swell; altering course does, and the ship is back on the track to arrive', () => {
+    const speedOnly = speedPlan(beamSetup());
+    assert.equal(speedOnly.mode, 'soft', 'speed only cannot avoid it');
+    const t0 = Date.now();
+    const r = speedPlan(beamSetup({ alterations: [20, 40, 60], maxOffNm: 80 }));
+    const ms = Date.now() - t0;
+    assert.equal(r.ok, true);
+    assert.equal(r.mode, 'hard', 'altering course keeps out of it: ' + r.notes.join(' '));
+    assert.equal(r.safe!.badH, 0);
+    const alt = r.segments.filter(g => g.alter !== 0);
+    assert.ok(alt.length >= 1, 'alters course');
+    assert.ok(alt.every(g => Math.abs(g.alter) >= 40), 'only alterations that take the swell off the beam inside the area');
+    assert.ok(Math.abs(r.segments[r.segments.length - 1].offTo) < 2.5, 'back on the track at the end');
+    assert.ok(r.segments.every(g => Math.abs(g.offFrom) <= 80 + 1e-6 && Math.abs(g.offTo) <= 80 + 1e-6), 'within the limit off the track');
+    assert.ok(alt.some(g => /Alter course \d+° to (starboard|port)/.test(g.why) && /swell 6 m on the beam/.test(g.why)), 'reason: ' + r.segments.map(g => g.why).join(' | '));
+    assert.ok(r.notes.some(n => /nearest forecast point/.test(n)), 'honest note about off-track weather');
+    assert.ok(ms < 8000, `fast enough (${ms} ms)`);
+});
+
+test('course alteration: not used when nothing is met (stays on the track)', () => {
+    const r = speedPlan(beamSetup({ alterations: [20, 40, 60], wxAt: () => ({ sw1: 1, sw1Dir: 0 }) as never }));
+    assert.ok(r.segments.every(g => g.alter === 0 && Math.abs(g.offTo) < 0.01));
+});
+
+test('course alteration: never where the ship may not be (land on the starboard side)', () => {
+    const r = speedPlan(beamSetup({ alterations: [20, 40, 60], canBeAt: lat => lat > -0.05 })); // starboard of an eastbound track = south: land there
+    assert.ok(r.segments.every(g => g.offFrom <= 0.01 && g.offTo <= 0.01), 'only to port');
+});
+
+test('taking a plan with a course alteration: off-track waypoints, rejoin, planned waypoints inside the detour left out', () => {
+    const r = newRoute('t');
+    r.etd = T0;
+    r.waypoints = [newWaypoint(0, 0, 'RL', 'A'), newWaypoint(0, 2.5, 'RL', 'M'), newWaypoint(0, 5, 'RL', 'B')]; // 300 nm, M at 150
+    const p = computePlan(r);
+    const plan = speedPlan({ ...beamSetup({ alterations: [20, 40, 60], maxOffNm: 80 }), track: trackOf(p) });
+    assert.equal(plan.mode, 'hard');
+    const wps = applySpeedPlan(r, p, plan.segments, 0);
+    assert.ok(wps.length > 3, 'waypoints added');
+    assert.ok(!wps.some(w => w.name === 'M') || Math.abs(plan.segments.find(g => g.fromNm <= 150 && g.toNm >= 150)!.offFrom) < 1, 'M left out when passed off the track');
+    assert.ok(wps.some(w => Math.abs(w.lat) > 0.1), 'an off-track waypoint');
+    assert.equal(wps[wps.length - 1].name, 'B', 'ends at the destination');
+    assert.ok(wps.some(w => /^(Stbd|Port) \d+°/.test(w.name ?? '')), 'named after the alteration');
+    // every leg forward along the track (no zig-zag back)
+    for (let i = 1; i < wps.length; i++) assert.ok(wps[i].lon >= wps[i - 1].lon - 1e-6, `leg ${i} goes forward`);
+});

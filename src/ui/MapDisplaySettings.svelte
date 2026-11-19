@@ -1,4 +1,5 @@
 <!-- Settings: how the ship and route are shown on the map, and the ship window. -->
+{#if !part || part === 'ships'}
 <div class="grid">
     <label
         >Ship symbols every
@@ -17,6 +18,8 @@
         </span>
     </label>
 </div>
+{/if}
+{#if !part || part === 'windows'}
 <label class="check" title="A bar at the top of the map with the weather where the mouse rests, at Windy's map time (computer only)">
     <input type="checkbox" checked={$cursorBar.on} on:change={e => cursorBar.update(b => ({ ...b, on: e.currentTarget.checked }))} />
     Weather under the cursor (bar at the top of the map)
@@ -33,6 +36,8 @@
     <input type="checkbox" bind:checked={$showIsobars} on:change={() => $showIsobars && showPressureLines()} />
     Show isobars (pressure lines) when the plugin opens
 </label>
+{/if}
+{#if !part || part === 'ships'}
 <label class="check" title="Rings from the ship outwards: swell 1, swell 2, sea, SWH, wind barb. Amber = alert, red = limit or IMO warning.">
     <input type="checkbox" bind:checked={$shipWeather} />
     Show SWH, sea, swell 1, swell 2 and wind on the ship symbols (after "Get forecast" in the Weather tab)
@@ -55,6 +60,8 @@
         {/each}
         <span class="pp-note">Amber and red are kept for warnings (your limits), so they are not offered here.</span>
     </div>
+{/if}
+{#if !part || part === 'windows'}
 <label class="check" title="The map pans so the ship at Windy's slider time stays in the middle. The map stays north up.">
     <input type="checkbox" bind:checked={$followShip} />
     Keep the ship centred on the map (the map follows the ship, north up)
@@ -63,12 +70,22 @@
     <input type="checkbox" bind:checked={$showShipBox} />
     Show the ship info window on the map (top left, drag to move)
 </label>
+<div class="fw-row">
+    <span>Floating windows: drag the title bar to move, the edges or the corner to resize; – minimise, ↺ original size, ✕ close.</span>
+    <button class="pp-btn pp-btn--ghost small" title="Ship window, graphs, weather bar and the map keys closed earlier come back" on:click={showAll}>Show closed windows again</button>
+    <button class="pp-btn pp-btn--ghost small" title="Every floating window back to its original size and place" on:click={resetAll}>All windows to original size</button>
+</div>
+{/if}
+{#if !part || part === 'ships'}
 <div class="grid colors">
     <label class="col">Track colour <input type="color" value={$route.color || '#ff2d95'} on:change={e => setColor('color', e)} /></label>
     <label class="col">Sailed part colour (voyage) <input type="color" value={$route.doneColor || '#9e9e9e'} on:change={e => setColor('doneColor', e)} /></label>
 </div>
+{/if}
 
 <script lang="ts">
+    /** Show only this piece of the group (a gear beside a function); null = all of it */
+    export let part: string | null = null;
     import { FLAG_PALETTE, type FlagColors } from '../lib/shipGlyph';
     const FLAG_KINDS: [keyof FlagColors, string][] = [
         ['swh', 'SWH'],
@@ -78,8 +95,22 @@
     ];
     import { SHIP_STYLES, shipSymbolSvg } from '../lib/shipSymbols';
     import { showPressureLines } from '../windy/weatherJobs';
+    import { reopenWindows, resetAllWindows } from './floatWin';
+    import { graphState } from './graphState';
+    import { logEvent } from '../lib/activityLog';
     import { cursorBar, rangeRings, flagColors, followShip, panelDim, route, shipStepH, shipStyle, shipWeather, showIsobars, showShipBox, updateRoute } from '../state';
 
+    function showAll() {
+        reopenWindows();
+        showShipBox.set(true);
+        cursorBar.update(b => ({ ...b, on: true }));
+        graphState.update(s => ({ ...s, open: true }));
+        logEvent('settings', 'Closed floating windows shown again');
+    }
+    function resetAll() {
+        resetAllWindows();
+        logEvent('settings', 'All floating windows back to their original size and place');
+    }
     function setColor(k: 'color' | 'doneColor', e: Event) {
         const v = (e.target as HTMLInputElement).value;
         updateRoute(r => (r[k] = v));
@@ -87,6 +118,18 @@
 </script>
 
 <style lang="less">
+    .fw-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        align-items: center;
+        margin: 6px 0;
+        font-size: 11.5px;
+        color: var(--g-text-2);
+        span {
+            flex: 1 1 100%;
+        }
+    }
     .grid {
         display: grid;
         grid-template-columns: 1fr 1fr;

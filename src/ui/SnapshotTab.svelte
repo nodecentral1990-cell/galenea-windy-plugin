@@ -1,17 +1,14 @@
 <div class="g-card">
 <div class="g-card__head">
-    <span class="g-card__title">Ship motion at the map time</span>
+    <span class="g-card__title">{mode === 'live' ? 'Ship motion here and now (GPS)' : 'Ship motion at the map time'}</span>
     <Hint title="Reading the polar diagram" width={360}>
         <p>Sectors are worked out from <b>Sea, Swell 1 and Swell 2</b> (the SWH flag is for reference). Coloured = a heading / speed where an IMO MSC.1/Circ.1228 check warns: red parametric, purple synchronous, green high waves, indigo broaching; stripes where two apply. Darker middle = closer to the exact condition. Advisory only.</p>
         <p>Flags show where the waves come <b>from</b>, with height and period; the barb points into the wind. The yellow arrow = your heading and speed (its tip on the speed ring).</p>
         <p>Change the heading or speed below to see how the sectors and warnings change. The same diagram is in the ship window on the map.</p>
     </Hint>
-    <div class="g-card__actions"><button class="pp-btn pp-btn--ghost small" on:click={openPolarSettings} title="Polar diagram settings: which warnings are shown"><Icon name="sliders" size={14} /> Polar settings</button></div>
+    <Gear host="motion" chips={MOTION_CHIPS} />
 </div>
-<div class="g-seg mode" role="radiogroup" aria-label="Motion views">
-    <button role="radio" class="g-seg__opt" class:is-on={mode === 'plan'} aria-checked={mode === 'plan'} on:click={() => setMode('plan')}><Icon name="clock" size={15} />At the map time</button>
-    <button role="radio" class="g-seg__opt" class:is-on={mode === 'live'} aria-checked={mode === 'live'} on:click={() => setMode('live')}><Icon name="crosshair" size={15} />Live (GPS)</button>
-</div>
+<SettingsFold host="motion" />
 {#if mode === 'live'}
     <LivePolar />
 {:else}
@@ -36,7 +33,8 @@
     </div>
     {#if wx}
         <RiskPolar {wx} {heading} {speed} lbp={$vessel.lbp} rollPeriod={roll.value} settings={$thresholds.resonance} size={490} style={$shipStyle} current={wx.currentKn != null && wx.currentSet != null ? { kn: wx.currentKn, set: wx.currentSet } : null} colors={$flagColors} />
-        <h4>At this heading and speed <span class="g-chip">advisory</span></h4>
+        <h4>At this heading and speed <span class="g-chip">advisory</span> <Gear host="motion-lim" line chips={[{ id: 'limits', label: 'Weather limits' }, { id: 'polar', label: 'Polar diagram' }]} /></h4>
+        <SettingsFold host="motion-lim" />
         {#if hits.length || limits.length}
             {#each hits as h}<div><span class="chip {h.phenomenon}">{PHENOMENON_LABEL[h.phenomenon]}</span> {h.detail}</div>{/each}
             {#each limits as l}<div class="lv{l.level}">{l.level === 2 ? 'LIMIT' : 'Alert'}: {l.detail}</div>{/each}
@@ -47,11 +45,14 @@
             {#if motion}
                 <b>Roll / pitch estimate:</b> roll {motion.roll.toFixed(1)}° (likely largest in 3 h {motion.rollMax.toFixed(0)}°), pitch {motion.pitch.toFixed(1)}° (largest {motion.pitchMax.toFixed(1)}°).
                 <span class="pp-note">Estimate · damping {motion.full.damping.totalPct.toFixed(1)} %{motion.full.damping.bilgeKeelPct > 0 ? ` (bilge keels ${motion.full.damping.bilgeKeelPct.toFixed(1)} %)` : ', no bilge keels entered'} · parametric roll not predicted</span>
-                <Hint title="Roll and pitch estimate"><p>Linear estimate from the wave spectra (sea, swell 1, swell 2) and your ship particulars; damping {motion.full.damping.totalPct.toFixed(1)} % of critical. Typically within ±30–50 % for roll. Parametric roll is <b>not</b> predicted: watch the IMO warnings. Settings → Roll and pitch.</p></Hint>
+                <Hint title="Roll and pitch estimate"><p>Linear estimate from the wave spectra (sea, swell 1, swell 2) and your ship particulars; damping {motion.full.damping.totalPct.toFixed(1)} % of critical. Typically within ±30–50 % for roll. Parametric roll is <b>not</b> predicted: watch the IMO warnings. Bilge keels, damping and marks: the gear beside this.</p></Hint>
+                <Gear host="motion-est" line chips={[{ id: 'motion', part: 'marks', label: 'Damping and marks' }, { id: 'motion', part: 'period', label: 'Roll period' }, { id: 'motion', part: 'keels', label: 'Bilge keels' }]} />
             {:else}
                 <span class="pp-note">Roll / pitch estimate: {motionMissing($vessel) || 'no wave data here'}.</span>
+                <Gear host="motion-est" line chips={[{ id: 'ship', part: 'particulars', label: 'Ship particulars' }, { id: 'motion', part: 'period', label: 'Roll period' }]} />
             {/if}
         </div>
+        <SettingsFold host="motion-est" />
         <p class="pp-note">Roll period {roll.value ? roll.value.toFixed(1) + ' s' + (roll.estimated ? ' (estimated from GM)' : ' (measured)') : 'not set: no roll checks'}. LBP {$vessel.lbp ?? 'not set: no surf-riding or high-wave checks'}. Advisory only.</p>
     {:else}
         <div class="g-empty"><p>No forecast for this time and place (beyond the forecast, or not fetched yet: see the Weather section).</p></div>
@@ -60,9 +61,6 @@
 {/if}
 </div>
 
-<script context="module" lang="ts">
-    let MOTION_MODE: 'plan' | 'live' = 'plan';
-</script>
 
 <script lang="ts">
     import store from '@windy/store';
@@ -85,21 +83,18 @@
     import { flagColors, plan, planKey, route, shipStyle, sweepKey, thresholds, timelineTs, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
     import RiskPolar from './RiskPolar.svelte';
     import LivePolar from './LivePolar.svelte';
-    import { openSettingsSection } from './SettingsTab.svelte';
+    import Gear from './base/Gear.svelte';
+    import SettingsFold from './settings/SettingsFold.svelte';
 
-    // live GPS or the plan at the map time (kept while the plugin is open)
-    let mode: 'plan' | 'live' = MOTION_MODE;
-    function setMode(m: 'plan' | 'live') {
-        mode = m;
-        MOTION_MODE = m;
-        logEvent('tab', `Motion view: ${m}`);
-    }
-    /** Switches the plugin to the Settings tab */
-    export let onSettings: (() => void) | null = null;
-    function openPolarSettings() {
-        openSettingsSection('polar');
-        onSettings?.();
-    }
+    /** Live GPS or the plan at the map time (the row of views under the section bar) */
+    export let mode: 'plan' | 'live' = 'plan';
+    // one gear for the card; the four groups that shape this screen are its chips
+    const MOTION_CHIPS = [
+        { id: 'polar', label: 'Polar diagram' },
+        { id: 'limits', label: 'Weather limits' },
+        { id: 'motion', label: 'Roll & pitch' },
+        { id: 'ship', part: 'particulars', label: 'Ship particulars' },
+    ];
     import { motionAt, motionMissing } from '../lib/motionEstimate';
 
     $: pos = $plan.etd != null && $plan.eta != null && $timelineTs >= $plan.etd && $timelineTs <= $plan.eta ? positionAt($route, $plan, $timelineTs) : null;

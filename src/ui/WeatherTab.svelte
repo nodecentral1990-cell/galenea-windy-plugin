@@ -1,13 +1,58 @@
+{#if view === 'charts'}
+<div class="g-card">
+    <div class="g-card__head">
+        <span class="g-card__title">Charts on the map</span>
+        <Hint title="Charts on the map">
+            <p><b>Wave chart</b>: Windy's wave layers in your own colours (the gear in the Waves row), white below your minimum, with lines of equal height. "Lines for this view" fetches forecast points over the map you see, for lines of wave types Windy is not showing.</p>
+            <p><b>Roll / pitch lines</b>: the plugin's own estimate over the map you see, for Windy's slider time (the gear in the Motion row). Parametric roll is not included: watch the IMO warnings.</p>
+            <p><b>Seamarks</b>: OpenSeaMap (lights, buoys, traffic separation, pilot boarding where mapped), from zoom 9. Not official charts.</p>
+        </Hint>
+        <Gear host="wx-map" chips={[{ id: 'map', part: 'windows', label: 'Windows and overlays' }, { id: 'map', part: 'ships', label: 'Ship symbols & colours' }]} />
+    </div>
+    <SettingsFold host="wx-map" />
+    <p class="g-phone-note">These are drawn on Windy's map. On a phone Windy shows the plugin over the whole screen, so the map is hidden while the plugin is open: use these on a computer or a tablet.</p>
+    <div class="g-row wavechart">
+        <span class="wx-lbl">Waves</span>
+        <button class="pp-btn pp-btn--ghost small" on:click={() => showWaveLayer('hs')} title="Windy's wave layer (significant wave height) in your colours">SWH</button>
+        <button class="pp-btn pp-btn--ghost small" on:click={() => showWaveLayer('sea')} title="Windy's wind-wave layer in your colours">Sea</button>
+        <button class="pp-btn pp-btn--ghost small" on:click={() => showWaveLayer('swell1')} title="Windy's swell 1 layer in your colours">Swell 1</button>
+        <button class="pp-btn pp-btn--ghost small" on:click={() => showWaveLayer('swell2')} title="Windy's swell 2 layer in your colours">Swell 2</button>
+        <button class="pp-btn pp-btn--ghost small" on:click={loadLinesForView} title="Forecast points over the map you see, for lines of wave types Windy is not showing">Lines for this view</button>
+        <span class="wx-gear"><Gear host="wx-waves" line chips={[{ id: 'wavechart' }]} /></span>
+    </div>
+    <SettingsFold host="wx-waves" />
+    <div class="g-row wavechart rollchart">
+        <span class="wx-lbl">Motion</span>
+        <button class="pp-btn pp-btn--ghost small" on:click={() => rollLinesForView('roll')} title="Lines of equal roll (2°, 4°, 6°…) over the map you see, for Windy's slider time">Roll lines for this view</button>
+        <button class="pp-btn pp-btn--ghost small" on:click={() => rollLinesForView('pitch')} title="Lines of equal pitch (1°, 2°, 3°…) in blues over the map you see, for Windy's slider time">Pitch lines for this view</button>
+        {#if $rollChartOn}<button class="pp-btn pp-btn--ghost small" on:click={hideRollLines}><Icon name="eyeOff" size={14} /> Hide lines</button>{/if}
+        <span class="wx-gear"><Gear host="wx-roll" line chips={[{ id: 'motion', part: 'chart', label: 'Roll chart' }, { id: 'motion', part: 'marks', label: 'Roll and pitch marks' }]} /></span>
+    </div>
+    <SettingsFold host="wx-roll" />
+    {#if $rollChartStatus}<div class="g-status">{$rollChartStatus}</div>{/if}
+    <div class="g-row wavechart">
+        <span class="wx-lbl">Charts</span>
+        <button class="pp-btn pp-btn--ghost small" class:pp-on={$chartLayers.seamarks} on:click={() => chartLayers.update(c => ({ ...c, seamarks: !c.seamarks }))} title="OpenSeaMap seamarks over the map (not official charts)"><Icon name="anchor" size={14} /> Seamarks</button>
+        <button class="pp-btn pp-btn--ghost small" class:pp-on={$placesLayers.ports} on:click={() => placesLayers.update(c => ({ ...c, ports: !c.ports }))} title="Ports (approximate positions) from zoom 4"><Icon name="ship" size={14} /> Ports</button>
+        <button class="pp-btn pp-btn--ghost small" class:pp-on={$placesLayers.canals} on:click={() => placesLayers.update(c => ({ ...c, canals: !c.canals }))} title="Canals and main straits">Canals</button>
+        <span class="wx-gear"><Gear host="wx-charts" line chips={[{ id: 'charts' }]} /></span>
+    </div>
+    <SettingsFold host="wx-charts" />
+    <p class="pp-note pp-err">Seamarks, ports and canals are not official charts: for orientation only. Always use ECDIS / official charts.</p>
+</div>
+{:else}
 <div class="g-card">
     <div class="g-card__head">
         <span class="g-card__title">Forecast along the route</span>
         <Hint title="Where the weather comes from">
             <p>The plugin always uses <b>ECMWF</b> (wind, rain, pressure) and <b>ECMWF-WAM</b> (waves, swell) from Windy, whichever model you pick in Windy's model menu (what these are: Help → Guide).</p>
             <p>Past times show the forecast as it was made then: <b>E</b> = an earlier Windy run kept in this browser. They are forecasts, not observations.</p>
-            <p><b>OM</b> = Open-Meteo, a free service, used only where Windy has nothing: past times not kept here, and days beyond your Windy plan (free Windy: about 5 days in 3-hour steps). Switch: Settings → Weather reading.</p>
+            <p><b>OM</b> = Open-Meteo, a free service, used only where Windy has nothing: past times not kept here, and days beyond your Windy plan (free Windy: about 5 days in 3-hour steps). Switch: the gear beside this (Weather reading).</p>
             <p>Forecasts can be wrong and get less reliable further ahead; values between forecast steps are interpolated.</p>
         </Hint>
+        <Gear host="wx-forecast" chips={[{ id: 'weather' }]} />
     </div>
+    <SettingsFold host="wx-forecast" />
     <div class="g-row">
         <div class="etd">ETD at WP1 (UTC, 24 h) <DateTimeField value={$route.etd} on:change={e => updateRoute(r => (r.etd = e.detail))} /></div>
         <label
@@ -24,9 +69,22 @@
     {#if !canFetch}
         <div class="g-status g-status--warn"><Icon name="warn" size={14} /> {$route.waypoints.length < 2 ? 'Needs a route with at least 2 waypoints (Route → Waypoints).' : 'Set the ETD above first.'}</div>
     {/if}
-    {#if $weatherStatus}<div class="g-status status" class:g-status--ok={/^Done/.test($weatherStatus)}>{$weatherStatus}</div>{/if}
+    {#if $weatherStatus}<div class="g-status status" class:g-status--ok={/^Done|^Updated/.test($weatherStatus)}>{$weatherStatus}</div>{/if}
     {#if stale && $wxSeries.length}
-        <div class="g-status g-status--warn"><Icon name="warn" size={14} /> The route changed after the forecast was fetched. Press "Get forecast" again. (Changes of ETD, speed or fixed ETAs don't need this.)</div>
+        {#if $wxAuto.followRoute}
+            <div class="g-status"><Icon name="refresh" size={14} /> The route changed: the weather for the changed legs is being fetched by itself.</div>
+        {:else}
+            <div class="g-status g-status--warn"><Icon name="warn" size={14} /> The route changed after the forecast was fetched. Press "Get forecast" again (or switch on "Update the weather by itself" with the gear). Changes of ETD, speed or fixed ETAs don't need this.</div>
+        {/if}
+    {/if}
+    <div class="pp-note wx-auto" data-g="wx-auto">
+        <Icon name="clock" size={13} />
+        {#if $wxAuto.followRoute || $wxAuto.every3h}By itself: {[$wxAuto.followRoute ? 'after each route change' : '', $wxAuto.every3h ? `every 3 h${$lastRouteFetch ? ` (next about ${hm($lastRouteFetch + 3 * 3600e3)} UTC)` : ''}` : ''].filter(Boolean).join(' · ')}{:else}Updates by itself: off{/if}
+        <Gear host="wx-forecast" line chips={[{ id: 'weather' }]} />
+    </div>
+    <AreaWeather />
+    {#if age.old && $wxSeries.length && !stale && !$weatherBusy}
+        <div class="g-status g-status--warn" data-g="wx-old"><Icon name="warn" size={14} /> The forecast is getting old: fetched {age.text} (more than {FORECAST_OLD_H} hours). Press "Get latest forecast along route".</div>
     {/if}
     {#if $mapProduct && !/^ecmwf/i.test($mapProduct)}<div class="g-status g-status--warn"><Icon name="warn" size={14} /> Windy's map is showing {$mapProduct.toUpperCase()}, so the map colours can differ from the plugin's numbers (the plugin always uses ECMWF).</div>{/if}
     {#if info}
@@ -35,45 +93,19 @@
             <div>
                 Weather data: <b>Windy {info.air}</b> · waves {info.waves} · fetched {info.fetched}.
                 {#if planTxt}<div>{planTxt}</div>{/if}
-                {#each info.other as o}<div><span class="wx-src" class:wx-src--om={o.includes('Open-Meteo')}>{o.includes('Open-Meteo') ? 'OM' : 'E'}</span> {o}</div>{/each}
+                {#each moreSrc ? info.other : info.other.slice(0, 2) as o}<div><span class="wx-src" class:wx-src--om={o.includes('Open-Meteo')}>{o.includes('Open-Meteo') ? 'OM' : 'E'}</span> {o}</div>{/each}
+                {#if info.other.length > 2}<button class="pp-btn pp-btn--ghost small" on:click={() => (moreSrc = !moreSrc)}>{moreSrc ? 'Show fewer' : `${info.other.length - 2} more sources (earlier runs kept in this browser)…`}</button>{/if}
+                {#if $wxAuto.extras}<div><span class="wx-src wx-src--om">OM</span> Sea, currents: Open-Meteo marine (Météo-France) · visibility: Open-Meteo{$wxAuto.readMap ? " · Windy's own map read after the forecast replaces them" : ''}</div>{/if}
             </div>
         </div>
     {/if}
     <div class="pp-note wx-echo">
-        The plugin always uses ECMWF + ECMWF-WAM · currents and visibility after the forecast: <b>{$autoLayers ? 'on' : 'off'}</b> · free fill (Open-Meteo): <b>{$freeForecast ? 'on' : 'off'}</b> (Settings → Weather reading)
+        The plugin always uses ECMWF + ECMWF-WAM · sea, currents, visibility downloaded: <b>{$wxAuto.extras ? 'on' : 'off'}</b> · Windy's map read after the forecast: <b>{$autoLayers ? 'on' : 'off'}</b> · free fill (Open-Meteo): <b>{$freeForecast ? 'on' : 'off'}</b>
+        <Gear host="wx-forecast" line chips={[{ id: 'weather' }]} />
     </div>
-</div>
-
-<div class="g-card">
-    <div class="g-card__head">
-        <span class="g-card__title">On the map</span>
-        <Hint title="Charts on the map">
-            <p><b>Wave chart</b>: Windy's wave layers in your own colours (Settings → Wave chart), white below your minimum, with lines of equal height. "Lines for this view" fetches forecast points over the map you see, for lines of wave types Windy is not showing.</p>
-            <p><b>Roll / pitch lines</b>: the plugin's own estimate over the map you see, for Windy's slider time (Settings → Roll and pitch). Parametric roll is not included: watch the IMO warnings.</p>
-            <p><b>Seamarks</b>: OpenSeaMap (lights, buoys, traffic separation, pilot boarding where mapped), from zoom 9. Not official charts.</p>
-        </Hint>
-    </div>
-    <div class="g-row wavechart">
-        <span class="wx-lbl">Waves</span>
-        <button class="pp-btn pp-btn--ghost small" on:click={() => showWaveLayer('hs')} title="Windy's wave layer (significant wave height) in your colours">SWH</button>
-        <button class="pp-btn pp-btn--ghost small" on:click={() => showWaveLayer('sea')} title="Windy's wind-wave layer in your colours">Sea</button>
-        <button class="pp-btn pp-btn--ghost small" on:click={() => showWaveLayer('swell1')} title="Windy's swell 1 layer in your colours">Swell 1</button>
-        <button class="pp-btn pp-btn--ghost small" on:click={() => showWaveLayer('swell2')} title="Windy's swell 2 layer in your colours">Swell 2</button>
-        <button class="pp-btn pp-btn--ghost small" on:click={loadLinesForView} title="Forecast points over the map you see, for lines of wave types Windy is not showing">Lines for this view</button>
-    </div>
-    <div class="g-row wavechart rollchart">
-        <span class="wx-lbl">Motion</span>
-        <button class="pp-btn pp-btn--ghost small" on:click={() => rollLinesForView('roll')} title="Lines of equal roll (2°, 4°, 6°…) over the map you see, for Windy's slider time">Roll lines for this view</button>
-        <button class="pp-btn pp-btn--ghost small" on:click={() => rollLinesForView('pitch')} title="Lines of equal pitch (1°, 2°, 3°…) in blues over the map you see, for Windy's slider time">Pitch lines for this view</button>
-        {#if $rollChartOn}<button class="pp-btn pp-btn--ghost small" on:click={hideRollLines}><Icon name="eyeOff" size={14} /> Hide lines</button>{/if}
-    </div>
-    {#if $rollChartStatus}<div class="g-status">{$rollChartStatus}</div>{/if}
-    <div class="g-row wavechart">
-        <span class="wx-lbl">Charts</span>
-        <button class="pp-btn pp-btn--ghost small" class:pp-on={$chartLayers.seamarks} on:click={() => chartLayers.update(c => ({ ...c, seamarks: !c.seamarks }))} title="OpenSeaMap seamarks over the map (not official charts)"><Icon name="anchor" size={14} /> Seamarks</button>
-        <button class="pp-btn pp-btn--ghost small" class:pp-on={$placesLayers.ports} on:click={() => placesLayers.update(c => ({ ...c, ports: !c.ports }))} title="Ports (approximate positions) from zoom 4"><Icon name="ship" size={14} /> Ports</button>
-        <button class="pp-btn pp-btn--ghost small" class:pp-on={$placesLayers.canals} on:click={() => placesLayers.update(c => ({ ...c, canals: !c.canals }))} title="Canals and main straits">Canals</button>
-    </div>
+    {#if !rows.length && !$weatherBusy}
+        <div class="g-empty wx-empty"><Icon name="weather" size={28} /><p>{canFetch ? 'Press "Get forecast along route": the weather table appears here, with your limits and the IMO checks.' : 'The weather table appears here once the route has an ETD and the forecast has been fetched.'}</p></div>
+    {/if}
 </div>
 
 {#if rows.length}
@@ -82,16 +114,18 @@
             <span class="g-card__title">Weather table</span>
             <Hint title="Reading the table" width={360}>
                 <p>Click a row to move Windy's time slider and the map to that time. Relative directions: 0° = from ahead.</p>
-                <p><b>SOG = SiCW − weather loss + current</b> along the track{$route.useCurrents ? '' : ' (currents are switched off in Settings → Speed, RPM and fuel)'}. {hasCurrents ? "" : "Current \"—\" = not read yet (press Read currents)."} Currents belong to the times they were read: after changing ETD, speeds or fixed ETAs, read them again.</p>
-                <p>Amber / red cells: your limits (Settings → Weather limits). Chips: IMO MSC.1/Circ.1228 checks, advisory only: <span class="chip parametric">PR</span> parametric, <span class="chip synchronous">SR</span> synchronous, <span class="chip highWaves">HW</span> high waves, <span class="chip surf">BR</span> broaching. No warning does not mean safe.</p>
+                <p><b>SOG = SiCW − weather loss + current</b> along the track{$route.useCurrents ? '' : ' (currents are switched off: the gear beside this, Currents)'}. {hasCurrents ? "" : "Current \"—\" = not read yet (press Read currents)."} Currents belong to the times they were read: after changing ETD, speeds or fixed ETAs, read them again.</p>
+                <p>Amber / red cells: your limits (the gear beside this). Chips: IMO MSC.1/Circ.1228 checks, advisory only: <span class="chip parametric">PR</span> parametric, <span class="chip synchronous">SR</span> synchronous, <span class="chip highWaves">HW</span> high waves, <span class="chip surf">BR</span> broaching. No warning does not mean safe.</p>
                 <p>Faded rows are in the past. Roll period: {rollTxt}.</p>
             </Hint>
+            <Gear host="wx-table" chips={[{ id: 'limits', part: 'thresholds', label: 'Alert and limit' }, { id: 'limits', part: 'imo', label: 'IMO warning heights' }, { id: 'limits', part: 'ice', label: 'Cold and ice' }, { id: 'speed', part: 'loss', label: 'Weather loss and currents' }, { id: 'motion', part: 'marks', label: 'Roll and pitch marks' }]} />
             <div class="g-card__actions">
                 <button class="pp-btn pp-btn--ghost small" on:click={() => (fullTable = true)} title="Show the whole table over the map"><Icon name="expand" size={14} /> Full-size table</button>
                 <button class="pp-btn pp-btn--ghost small" on:click={() => exportTable('xlsx')}><Icon name="download" size={14} /> Excel</button>
                 <button class="pp-btn pp-btn--ghost small" on:click={() => exportTable('csv')}>CSV</button>
             </div>
         </div>
+        <SettingsFold host="wx-table" />
         <div class="g-row">
             <span class="wx-lbl">Read from Windy's map</span>
             <button class="pp-btn pp-btn--ghost small" disabled={$weatherBusy} on:click={() => readLayer('currents')} title="Experimental: steps Windy's time slider with the currents layer and reads the value at each ship position">Read currents (exp.)</button>
@@ -105,23 +139,29 @@
         </div>
     </div>
 {/if}
+{/if}
 
 {#if fullTable && rows.length}
-    <Overlay onClose={() => (fullTable = false)}>
-        <svelte:fragment slot="head"><b>Weather along "{$route.name}"</b> · {rows.length} rows · all times UTC · click a row to move the map time</svelte:fragment>
+    <Overlay key="weathertable" onClose={() => (fullTable = false)}>
+        <svelte:fragment slot="head"><b>Weather along "{$route.name}"</b> · {rows.length} rows · all times UTC · click a row to move the map time <Gear win chips={[{ id: 'limits', part: 'thresholds', label: 'Alert and limit' }, { id: 'limits', part: 'imo', label: 'IMO warning heights' }, { id: 'limits', part: 'ice', label: 'Cold and ice' }, { id: 'motion', part: 'marks', label: 'Roll and pitch marks' }]} /></svelte:fragment>
         <WeatherTable full {rows} {isNow} onRowClick={goTo} />
     </Overlay>
 {/if}
 
 <script lang="ts">
     import store from '@windy/store';
+    import { onDestroy } from 'svelte';
+    import { FORECAST_OLD_H, forecastAge } from '../lib/voyageStrip';
     import { map } from '@windy/map';
 
     import { fmtLat, fmtLon, fmtTime } from '../lib/format';
     import { beaufort, buildRows, encounterOf, forecastInfo, rollPeriodFor, seaDirOf, type WxRow } from '../lib/weather';
     import { writeXlsx } from '../lib/formats/xlsx';
     import { writeCsv } from '../lib/formats/table';
-    import { autoLayers, readLayer, refreshWeather, stopWeather, weatherBusy, weatherStatus } from '../windy/weatherJobs';
+    import { autoLayers, lastRouteFetch, readLayer, refreshWeather, stopWeather, weatherBusy, weatherStatus, wxAuto } from '../windy/weatherJobs';
+    import AreaWeather from './AreaWeather.svelte';
+    let moreSrc = false;
+    const hm = (t: number) => new Date(t).toISOString().slice(11, 16);
     import { mapProduct, plan, planKey, route, tableStepH, thresholds, timelineTs, updateRoute, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
     import { downloadFile } from './download';
     import DateTimeField from './DateTimeField.svelte';
@@ -134,8 +174,19 @@
     import { windyCoverage } from '../windy/forecast';
     import { hideRollLines, rollChartOn, rollChartStatus, rollLinesForView } from '../windy/rollChart';
     import Overlay from './Overlay.svelte';
+    import Gear from './base/Gear.svelte';
+    import SettingsFold from './settings/SettingsFold.svelte';
+
+    /** Which view of the Weather section: the forecast with the weather table under it, or the charts on the map */
+    export let view: 'route' | 'charts' = 'route';
 
     let fullTable = false;
+    // "getting old": 12 hours after fetching (the clock is read again every minute)
+    let clock = Date.now();
+    const clockTimer = setInterval(() => (clock = Date.now()), 60_000);
+    onDestroy(() => clearInterval(clockTimer));
+    $: fetchedAt = $wxSeries.length ? Math.min(...$wxSeries.map(s => s.fetchedAt ?? Infinity)) : null;
+    $: age = forecastAge(fetchedAt, clock);
 
     $: canFetch = $route.waypoints.length >= 2 && $plan.etd != null;
     $: stale = $wxPlanKey !== $planKey;

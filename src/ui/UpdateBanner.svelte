@@ -16,7 +16,7 @@
         <b>🔔 Version {$updates.latest} is available</b> (you have {config.version}{$updates.latestBuilt ? `; published ${$updates.latestBuilt.slice(0, 10)}` : ''}).
         <div class="row">
             {#if $installedPending === $updates.latest}
-                <button class="pp-btn small" on:click={reloadWindy}>🔄 Reload Windy now to start {$updates.latest}</button>
+                <button class="pp-btn small" on:click={reloadWindy}><Icon name="refresh" size={14} /> Reload Windy now to start {$updates.latest}</button>
             {:else}
                 <button class="pp-btn small" disabled={busy || $updateBusy} on:click={install}>{busy ? 'Installing…' : 'Install update'}</button>
             {/if}
@@ -29,6 +29,7 @@
 {/if}
 
 <script lang="ts">
+    import Icon from './base/Icon.svelte';
     import { onMount } from 'svelte';
 
     import config from '../pluginConfig';
