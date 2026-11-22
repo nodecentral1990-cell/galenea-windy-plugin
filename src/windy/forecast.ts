@@ -105,11 +105,13 @@ async function loadKept(key: string, lat: number, lon: number, step: 1 | 3): Pro
     }
     if (!skipStored) {
         const kept = await idbGet<WxSeries>(IDB_PREFIX + key).catch(() => undefined);
-        if (kept && kept.fetchedAt && Date.now() - kept.fetchedAt < KEEP_MS && kept.ts?.length) return kept;
+        if (kept && kept.fetchedAt && Date.now() - kept.fetchedAt < KEEP_MS && kept.ts?.length && !kept.wavesFailed) return kept;
     }
     const fresh = await loadSeries(lat, lon, step);
     const s = await remember(fresh).catch(() => fresh);
-    idbSet(IDB_PREFIX + key, s).catch(() => {});
+    // without Windy's waves: not kept, so the next request asks Windy again
+    if (s.wavesFailed) cache.delete(key);
+    else idbSet(IDB_PREFIX + key, s).catch(() => {});
     return s;
 }
 
@@ -139,11 +141,23 @@ async function remember(fresh: WxSeries): Promise<WxSeries> {
     return merged;
 }
 
+/** Windy's wave forecast, asked once more after a short pause if the first answer fails or is empty (owner's report
+ *  2026-11-22: roll and pitch missing in stretches of the graph, "no wave data" under it) */
+async function wavesWithRetry(lat: number, lon: number, step: 1 | 3): Promise<Payload | null> {
+    const ask = () => getPointForecastData('ecmwfWaves', { lat, lon, step, days: FORECAST_DAYS, extended: true }) as unknown as Promise<Payload>;
+    const good = (p: Payload | null) => !!(p?.data?.data && Array.isArray((p.data.data as Record<string, unknown>).ts) && ((p.data.data as Record<string, unknown>).ts as unknown[]).length);
+    let p = await ask().catch(() => null);
+    if (good(p)) return p;
+    await new Promise(r => setTimeout(r, 1500));
+    p = await ask().catch(() => null);
+    return good(p) ? p : null;
+}
+
 async function loadSeries(lat: number, lon: number, step: 1 | 3): Promise<WxSeries> {
     const [air, sea] = await Promise.all([
         // Without `days` Windy returns only its short default range (~4-5 days).
         getPointForecastData('ecmwf', { lat, lon, step, days: FORECAST_DAYS, extended: true }) as unknown as Promise<Payload>,
-        (getPointForecastData('ecmwfWaves', { lat, lon, step, days: FORECAST_DAYS, extended: true }) as unknown as Promise<Payload>).catch(() => null),
+        wavesWithRetry(lat, lon, step),
     ]);
     // Windy pads the extended view for users without Premium with FAKE promotional days: leave them out
     const a0 = air?.data?.data;
@@ -191,6 +205,7 @@ async function loadSeries(lat: number, lon: number, step: 1 | 3): Promise<WxSeri
         swell2Dir: arr(w, 'swell2Dir'),
         swell2Period: arr(w, 'swell2Period'),
         wavesModel: w ? 'ECMWF-WAM' : undefined,
+        ...(w ? {} : { wavesFailed: true }),
         wavesRefTime: sea?.data?.header?.refTime ?? sea?.data?.header?.update,
     };
 }
@@ -253,9 +268,11 @@ function openMeteo(lat: number, lon: number, range: { start: number; end: number
 async function fillGaps(s: WxSeries, range: { start: number; end: number }): Promise<WxSeries> {
     const g = gaps(s, range.start, range.end);
     const now = Date.now();
+    // no Windy waves at all here: the free waves fill the whole time (Windy's are asked for again later)
+    const noW = !!s.wavesFailed;
     // Open-Meteo reaches back 92 days and ahead about 15–16 days
-    const before = g.before && range.start > now - 92 * 86400e3;
-    const after = g.after && (s.ts[s.ts.length - 1] ?? 0) < now + 15.5 * 86400e3;
+    const before = (g.before || noW) && range.start > now - 92 * 86400e3;
+    const after = (g.after || noW) && (s.ts[s.ts.length - 1] ?? 0) < now + 15.5 * 86400e3;
     if (!before && !after) return s;
     const om = await openMeteo(s.lat, s.lon, range).catch(() => null);
     return om ? spliceSeries(s, om, 'openmeteo', omLabel) : s;

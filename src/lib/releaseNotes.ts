@@ -10,6 +10,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.28.0',
+        date: '2026-11-22',
+        notes: [
+            'Sea areas and limits on the map (Settings → Nautical charts and places): emission control areas for sulphur (SECA, 0.10 % fuel) and NOx (Tier III), including the Canadian Arctic and Norwegian Sea ECAs and the adopted North-East Atlantic ECA (in force 1 Sep 2027, 0.10 % sulphur from 1 Sep 2028); MARPOL special areas by annex (I oil, II noxious liquids, IV sewage, V garbage); lines at 3, 50 and 200 nm from land, the 12 nm territorial sea, 24 nm contiguous zone and EEZ limits; ballast water exchange distances. Point at an area\'s name on the map for its rule and source. Drawn from the official IMO texts; the distance lines are approximate. Downloaded once, then kept in the browser (also with no internet). Planning aid only: check the current rules and official charts.',
+            'Roll and pitch no longer go missing in stretches of the graph: where Windy\'s wave forecast failed for a point, it is asked for again by itself, and meanwhile the waves come from the next forecast point (within 100 nm) or the free Open-Meteo wave forecast. The line under the graph no longer says "no wave data" when only the first point (e.g. a berth) has none.',
+            'Ports on the map: the button in Route → Distances now shows and hides the ports and canals; port names sit beside their dots on a dark label, and names or dots that would fall on top of each other are left out until you zoom in.',
+        ],
+    },
+    {
         version: '0.27.0',
         date: '2026-11-22',
         notes: [

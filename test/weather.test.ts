@@ -135,3 +135,20 @@ test('wave power: from Windy if sent, else 0.49 × SWH² × period', async () =>
     assert.ok(Math.abs((p.powerKw as number) - 78.4) < 1e-9 && p.powerCalc);
     assert.deepEqual(wavePower(null, null, 10), { powerKw: null, powerCalc: false });
 });
+
+test('waves from the next point when the nearest has none (owner 2026-11-22: roll / pitch gaps)', () => {
+    const t0 = Date.UTC(2026, 10, 27, 0);
+    const ts = [0, 3, 6].map(h => t0 + h * 3600e3);
+    const base = (lat: number, lon: number): WxSeries => ({ lat, lon, ts, model: 'ECMWF', wind: [5, 5, 5], windDir: [270, 270, 270], pressure: [101300, 101300, 101300] });
+    const noWaves: WxSeries = { ...base(34, -25), wavesFailed: true };
+    const withW: WxSeries = { ...base(34, -24), wavesTs: ts, waves: [2, 2, 2], wavesDir: [300, 300, 300], wavesPeriod: [9, 9, 9], swell1: [1.5, 1.5, 1.5], swell1Dir: [290, 290, 290], swell1Period: [11, 11, 11] };
+    const far: WxSeries = { ...base(34, -20), wavesTs: ts, waves: [4, 4, 4], wavesDir: [0, 0, 0], wavesPeriod: [9, 9, 9] };
+    const wx = weatherAt([noWaves, withW, far], { lat: 34, lon: -25.1 }, ts[1]);
+    assert.ok(wx);
+    assert.equal(wx!.hs, 2, 'waves of the next point (50 nm), not the far one');
+    assert.equal(wx!.sw1Period, 11);
+    assert.equal(wx!.windKn != null, true, 'wind still from the nearest point');
+    near(wx!.wavesFromNm as number, 55, 3, 'how far the waves come from');
+    const alone = weatherAt([noWaves, far], { lat: 34, lon: -25.1 }, ts[1]);
+    assert.equal(alone!.hs, null, 'no point within 100 nm: no waves rather than far-away ones');
+});

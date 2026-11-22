@@ -365,6 +365,46 @@ export interface PlacesLayers {
 }
 export const placesLayers = persisted<PlacesLayers>('placesLayers', { ports: false, canals: false, tss: true });
 
+/** Sea areas and limits on the map (owner, 2026-11-22): ECAs, MARPOL special areas by annex, distance-from-land lines */
+export interface SeaAreaLayers {
+    /** Emission control areas for sulphur (SECA, 0.10 % fuel) */
+    sox: boolean;
+    /** Emission control areas for NOx (Tier III) */
+    nox: boolean;
+    /** Also ECAs adopted but not yet in force (North-East Atlantic, in force 1 Sep 2027) */
+    future: boolean;
+    /** MARPOL special areas: Annex I oil, II noxious liquids, IV sewage, V garbage */
+    a1: boolean;
+    a2: boolean;
+    a4: boolean;
+    a5: boolean;
+    /** Lines at a distance from land / maritime zones */
+    nm3: boolean;
+    ts12: boolean;
+    cz24: boolean;
+    nm50: boolean;
+    nm200: boolean;
+    eez: boolean;
+    /** Names of the areas on the map */
+    labels: boolean;
+}
+export const seaAreaLayers = persisted<SeaAreaLayers>('seaAreaLayers', {
+    sox: false,
+    nox: false,
+    future: true,
+    a1: false,
+    a2: false,
+    a4: false,
+    a5: false,
+    nm3: false,
+    ts12: false,
+    cz24: false,
+    nm50: false,
+    nm200: false,
+    eez: false,
+    labels: true,
+});
+
 /** Panel brightness for the wheelhouse at night (UI overhaul 2026-11-02): dim = softer text and accents */
 export const panelDim = persisted<boolean>('panelDim', false);
 

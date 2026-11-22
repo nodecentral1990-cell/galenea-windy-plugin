@@ -230,6 +230,7 @@
     import { startRollChart, stopRollChart } from './windy/rollChart';
     import { startChartLayers, stopChartLayers } from './windy/chartLayer';
     import { startPlaces, stopPlaces } from './windy/placesLayer';
+    import { startSeaAreas, stopSeaAreas } from './windy/seaAreasLayer';
     import { setRingCenter, startRangeRings, stopRangeRings } from './windy/rangeRingsLayer';
     import CursorBar from './ui/CursorBar.svelte';
     import { cursorBar } from './state';
@@ -470,6 +471,7 @@
         safe('Roll chart', startRollChart);
         safe('Nautical charts', startChartLayers);
         safe('Ports and canals', startPlaces);
+        safe('Sea areas and limits', startSeaAreas);
         safe('Range rings', startRangeRings);
         safe('Place marker', showMarker);
         safe('Weather area on the map', startAreaLayer);
@@ -558,6 +560,11 @@
         stopRollChart();
         stopChartLayers();
         stopPlaces();
+        try {
+            stopSeaAreas();
+        } catch {
+            /* gone */
+        }
         stopRangeRings();
         try {
             stopAutoWeather();

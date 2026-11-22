@@ -95,10 +95,11 @@
                 </tbody>
             </table>
         </div>
-        <div class="g-row ds-actions">
-            <button class="g-btn g-btn--s" on:click={() => placesLayers.update(c => ({ ...c, ports: true, canals: true }))}><Icon name="anchor" size={14} /> Show ports and canals on the map</button>
-        </div>
     {/if}
+    <div class="g-row ds-actions">
+        <!-- one button shows and hides them (owner, 2026-11-22) -->
+        <button class="g-btn g-btn--s" class:is-on={$placesLayers.ports || $placesLayers.canals} aria-pressed={$placesLayers.ports || $placesLayers.canals} on:click={() => placesLayers.update(c => { const on = !(c.ports || c.canals); return { ...c, ports: on, canals: on }; })}><Icon name="anchor" size={14} /> {$placesLayers.ports || $placesLayers.canals ? 'Hide ports and canals on the map' : 'Show ports and canals on the map'}</button>
+    </div>
     <div class="g-prov"><Icon name="info" size={14} /> Approximate, for planning and orientation only: not for navigation. Sea lanes: Eurostat SeaRoute / MARNET. Ports: sea-ports list. Distances worked out by the plugin.</div>
 </div>
 

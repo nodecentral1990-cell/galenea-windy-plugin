@@ -111,9 +111,30 @@ const nmBetween = (a: { lat: number; lon: number }, b: { lat: number; lon: numbe
 /** Distance to the nearest forecast already downloaded (route points and area), nm */
 function coveredNm(p: { lat: number; lon: number }): number {
     let best = Infinity;
-    for (const s of pool.values()) best = Math.min(best, nmBetween(p, s));
-    if (get(wxAuto).areaOn) for (const s of get(areaSeries)) best = Math.min(best, nmBetween(p, s));
+    // a point whose wave forecast failed does not count: it is asked for again
+    for (const s of pool.values()) if (!s.wavesFailed || (waveTries.get(pkey(s.lat, s.lon)) ?? 0) >= WAVE_TRIES) best = Math.min(best, nmBetween(p, s));
+    if (get(wxAuto).areaOn) for (const s of get(areaSeries)) if (!s.wavesFailed) best = Math.min(best, nmBetween(p, s));
     return best;
+}
+
+/** Points whose Windy wave forecast failed are asked for again by themselves, up to WAVE_TRIES times, a while apart */
+const WAVE_TRIES = 3;
+const WAVE_RETRY_MS = 90_000;
+const waveTries = new Map<string, number>();
+let waveTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleWaveRetry(): void {
+    if (waveTimer) return;
+    const due = [...pool.values()].filter(s => s.wavesFailed && (waveTries.get(pkey(s.lat, s.lon)) ?? 0) < WAVE_TRIES);
+    if (!due.length) return;
+    waveTimer = setTimeout(() => {
+        waveTimer = null;
+        if (get(weatherBusy)) return scheduleWaveRetry();
+        const pts = [...pool.values()].filter(s => s.wavesFailed && (waveTries.get(pkey(s.lat, s.lon)) ?? 0) < WAVE_TRIES).map(s => ({ lat: s.lat, lon: s.lon }));
+        if (!pts.length) return;
+        for (const p of pts) waveTries.set(pkey(p.lat, p.lon), (waveTries.get(pkey(p.lat, p.lon)) ?? 0) + 1);
+        logEvent('weather', `Windy's waves missing at ${pts.length} point(s): asking again`, { pts });
+        void refreshWeather({ quiet: true, only: pts, retryWaves: true });
+    }, WAVE_RETRY_MS);
 }
 /** Route points with no downloaded forecast near them */
 export function missingPoints(): { lat: number; lon: number }[] {
@@ -133,7 +154,7 @@ function publish(): void {
  * Forecast along the route (fresh = ask again even for points already fetched), then, if asked for, Windy's map.
  * `quiet` = by itself (after a route change or the 3-hourly refresh): no progress window, nothing on the map moves.
  */
-export async function refreshWeather(opts: { fresh?: boolean; title?: string; quiet?: boolean; only?: { lat: number; lon: number }[] } = {}): Promise<void> {
+export async function refreshWeather(opts: { fresh?: boolean; title?: string; quiet?: boolean; only?: { lat: number; lon: number }[]; retryWaves?: boolean } = {}): Promise<void> {
     if (get(weatherBusy)) return;
     weatherBusy.set(true);
     const quiet = !!opts.quiet;
@@ -176,6 +197,7 @@ export async function refreshWeather(opts: { fresh?: boolean; title?: string; qu
         // kept (a fresh fetch replaces the older forecast for the same point); the screens use them at once
         for (const s of ok) pool.set(pkey(s.lat, s.lon), s);
         publish();
+        const noWaves = ok.filter(s => s.wavesFailed).length;
         if (!opts.only) {
             wxSweep.set(new Map());
             wxSweepKey.set('');
@@ -201,12 +223,14 @@ export async function refreshWeather(opts: { fresh?: boolean; title?: string; qu
         }
         const hm = new Date().toISOString().slice(11, 16);
         weatherStatus.set(
-            sig.cancelled
+            (sig.cancelled
                 ? `Stopped: ${ok.length} points fetched.`
                 : opts.only
-                  ? `Updated at ${hm} UTC: ${ok.length} new forecast point${ok.length === 1 ? '' : 's'} for the changed part of the route; the rest from the forecast already downloaded.${failed ? ` ${failed} failed.` : ''}`
-                  : `${quiet ? 'Updated by itself' : 'Done'} at ${hm} UTC: ${ok.length} forecast points along the route${all.length > pts.length ? ` (+ ${all.length - pts.length} from the area)` : ''}${failed ? `, ${failed} failed` : ''}.`,
-        );
+                  ? opts.retryWaves
+                      ? `Updated at ${hm} UTC: Windy's waves asked for again at ${ok.length} point${ok.length === 1 ? '' : 's'}${noWaves ? `, still missing at ${noWaves} (waves from the next point or Open-Meteo there)` : ', all there now'}.`
+                      : `Updated at ${hm} UTC: ${ok.length} new forecast point${ok.length === 1 ? '' : 's'} for the changed part of the route; the rest from the forecast already downloaded.${failed ? ` ${failed} failed.` : ''}`
+                  : `${quiet ? 'Updated by itself' : 'Done'} at ${hm} UTC: ${ok.length} forecast points along the route${all.length > pts.length ? ` (+ ${all.length - pts.length} from the area)` : ''}${failed ? `, ${failed} failed` : ''}.`) + (noWaves && !opts.retryWaves ? ` Windy's waves missing at ${noWaves} point${noWaves === 1 ? '' : 's'}: asked for again in a minute or two; meanwhile from the next point or Open-Meteo.` : ''));
+        scheduleWaveRetry();
         if (layers && !sig.cancelled && ok.length) {
             const done: string[] = [];
             for (const kind of ['sea', 'currents', 'visibility'] as SweepKind[]) {
@@ -373,6 +397,8 @@ export function stopAutoWeather(): void {
     routeTimer = null;
     if (clock) clearInterval(clock);
     clock = null;
+    if (waveTimer) clearTimeout(waveTimer);
+    waveTimer = null;
 }
 
 /** One layer on its own (button in the Weather tab), with its own progress window. */

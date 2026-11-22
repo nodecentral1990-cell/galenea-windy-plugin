@@ -72,6 +72,13 @@ type Group<K extends string> = { ts: number[]; arrs: Partial<Record<K, Arr>> };
 /** `extra` times before `span.from` and after `span.to`, around `main`'s times inside the span */
 function spliceGroup<K extends string>(main: Group<K>, extra: Group<K>, keys: readonly K[], span: { from: number; to: number }): Group<K> {
     const pick: { src: Group<K>; i: number }[] = [];
+    if (!(span.from <= span.to)) {
+        // the main series has none of these values (e.g. Windy's waves failed): all from the extra one, once
+        extra.ts.forEach((_, i) => pick.push({ src: extra, i }));
+        const arrs0: Partial<Record<K, Arr>> = {};
+        for (const k of keys) if (extra.arrs[k]) arrs0[k] = pick.map(p => extra.arrs[k]?.[p.i] ?? null);
+        return { ts: pick.map(p => extra.ts[p.i]), arrs: arrs0 };
+    }
     extra.ts.forEach((t, i) => t < span.from - 60_000 && pick.push({ src: extra, i }));
     main.ts.forEach((t, i) => t >= span.from && t <= span.to && pick.push({ src: main, i }));
     extra.ts.forEach((t, i) => t > span.to + 60_000 && pick.push({ src: extra, i }));

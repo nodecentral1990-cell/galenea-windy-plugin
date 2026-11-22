@@ -99,3 +99,13 @@ test('weather rows say where past / filled weather comes from', () => {
     // buildRows marks the source (smoke test via a minimal plan is in weather tests); here check the lookup
     assert.equal(typeof buildRows, 'function');
 });
+
+test('no Windy waves at all: the free waves fill the whole time, once (owner 2026-11-22)', () => {
+    const ts = [0, 1, 2].map(h => Date.UTC(2026, 10, 27, h * 3));
+    const windy = { lat: 34, lon: -25, ts, model: 'ECMWF', wind: [5, 5, 5], pressure: [101300, 101300, 101300], wavesFailed: true } as never;
+    const om = { lat: 34, lon: -25, ts, model: 'Open-Meteo', wind: [6, 6, 6], wavesTs: ts, waves: [2, 2.5, 3], swell1: [1, 1, 1] } as never;
+    const m = spliceSeries(windy, om, 'openmeteo', { air: 'OM air', waves: 'OM waves' });
+    assert.deepEqual(m.wavesTs, ts, 'each wave time once');
+    assert.deepEqual(m.waves, [2, 2.5, 3]);
+    assert.deepEqual(m.wind, [5, 5, 5], 'air still from Windy');
+});

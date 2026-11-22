@@ -18,6 +18,8 @@ type Lyr = { remove(): unknown };
 let portLayers: Lyr[] = [];
 let passLayers: Lyr[] = [];
 let distLayers: Lyr[] = [];
+/** Names drawn at the Distances end points (port names give way to them) */
+let distEnds: { lat: number; lon: number; name: string }[] = [];
 
 /** Distance rows drawn on the map */
 export const shownDistances = writable<DistanceRow[]>([]);
@@ -53,15 +55,50 @@ function dot(lat: number, lon: number, title: string, cls: string, label = ''): 
 
 const PORT_MIN_ZOOM = 4;
 
+/** Zoom from which the port names are written next to the dots */
+const PORT_LABEL_ZOOM = 6;
+
+/**
+ * Ports in view (owner's report 2026-11-22: "port names and dot for the port location are overlapping"): the dot is a
+ * small ring (Windy's own town names stay readable through it), our name sits to the right of it on a dark label, and
+ * a dot or name that would fall on one already drawn is left out (zoom in to see it).
+ */
 function drawPorts(): void {
     portLayers = clear(portLayers);
     if (!get(placesLayers).ports || map.getZoom() < PORT_MIN_ZOOM) return;
     const b = map.getBounds();
+    const z = map.getZoom();
+    const named = z >= PORT_LABEL_ZOOM;
+    const taken: { x0: number; y0: number; x1: number; y1: number }[] = [];
+    // the canal / strait names and the Distances end points are drawn anyway: ports give way to them
+    const fixed = [...(get(placesLayers).canals ? PASSAGES.map(ps => ({ lat: ps.points[0].lat, lon: ps.points[0].lon, name: ps.name })) : []), ...distEnds];
+    for (const f of fixed) {
+        try {
+            const q = map.latLngToContainerPoint([f.lat, f.lon]);
+            taken.push({ x0: q.x - 11, y0: q.y - 10, x1: q.x + 16 + f.name.length * 6.2, y1: q.y + 10 });
+        } catch {
+            /* not on screen */
+        }
+    }
+    const hits = (r: { x0: number; y0: number; x1: number; y1: number }) => taken.some(t => r.x0 < t.x1 && r.x1 > t.x0 && r.y0 < t.y1 && r.y1 > t.y0);
     let n = 0;
     for (const p of ports()) {
         if (!b.contains([p.lat, p.lon])) continue;
+        let xy: { x: number; y: number };
+        try {
+            xy = map.latLngToContainerPoint([p.lat, p.lon]);
+        } catch {
+            xy = { x: n * 20, y: 0 };
+        }
+        const dotBox = { x0: xy.x - 5, y0: xy.y - 5, x1: xy.x + 5, y1: xy.y + 5 };
+        if (hits(dotBox)) continue;
+        // the name: about 6.2 px a letter at 11 px, starting 9 px right of the dot
+        const lab = named ? { x0: xy.x + 8, y0: xy.y - 8, x1: xy.x + 14 + p.name.length * 6.2, y1: xy.y + 8 } : null;
+        const showName = !!lab && !hits(lab);
+        taken.push(dotBox);
+        if (showName && lab) taken.push(lab);
         if (++n > 400) break;
-        portLayers.push(dot(p.lat, p.lon, `${p.name} (${p.code}), approximate position`, 'pp-place-dot--port', map.getZoom() >= 7 ? p.name : ''));
+        portLayers.push(dot(p.lat, p.lon, `${p.name} (${p.code}), approximate position`, 'pp-place-dot--port', showName ? p.name : ''));
     }
 }
 
@@ -79,6 +116,7 @@ function drawPassages(): void {
 export function drawDistances(rows: DistanceRow[], ends: { a: Port | { lat: number; lon: number; name: string }; b: Port | { lat: number; lon: number; name: string } }[]): void {
     guard('Distances on the map', () => {
         distLayers = clear(distLayers);
+        distEnds = [];
         if (!rows.length) return;
         const all: [number, number][] = [];
         rows.forEach((r, i) => {
@@ -93,7 +131,10 @@ export function drawDistances(rows: DistanceRow[], ends: { a: Port | { lat: numb
                 distLayers.push(L.polyline(p, { color: '#38e1ff', weight: 3, opacity: 0.95, interactive: false, className: 'pp-dist pp-dist--sea' }).addTo(map));
                 all.push(...p);
             }
-            for (const q of [e.a, e.b]) distLayers.push(dot(q.lat, q.lon, q.name, 'pp-place-dot--end', q.name));
+            for (const q of [e.a, e.b]) {
+                distLayers.push(dot(q.lat, q.lon, q.name, 'pp-place-dot--end', q.name));
+                distEnds.push({ lat: q.lat, lon: q.lon, name: q.name });
+            }
             all.push(...gc);
         });
         if (all.length) {
@@ -112,6 +153,8 @@ export function drawDistances(rows: DistanceRow[], ends: { a: Port | { lat: numb
 
 export function clearDistances(): void {
     distLayers = clear(distLayers);
+    distEnds = [];
+    redraw();
 }
 
 let unsub: (() => void) | null = null;

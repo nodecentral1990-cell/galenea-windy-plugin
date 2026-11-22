@@ -52,6 +52,16 @@ async function go(page, name) {
     // outside services the test computer cannot reach: stand-ins (no data), so nothing fails in the page
     await page.route(/open-meteo\.com/, route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{}' }));
     await page.route(/tiles\.openseamap\.org|wms\.gebco\.net/, route => route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') }));
+    // the sea-area data (public code page on GitHub) from this folder: the test computer cannot reach GitHub's raw files
+    const seaDir = path.join(__dirname, '..', 'data', 'seaareas');
+    const seaHits = [];
+    await page.route(/raw\.githubusercontent\.com\/.*\/data\/seaareas\//, route => {
+        const rel = route.request().url().split('/data/seaareas/')[1];
+        seaHits.push(rel);
+        const f = path.join(seaDir, rel);
+        if (!f.startsWith(seaDir) || !fs.existsSync(f)) return route.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, body: 'not found' });
+        return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: fs.readFileSync(f) });
+    });
     page.on('requestfailed', r => log.push('NOTE request failed: ' + r.url().slice(0, 120)));
     // The checks below were written for "press Get forecast, then Windy's map is read": start with that (the weather
     // by itself, 2026-11-19, is switched on and checked near the end)
@@ -1312,6 +1322,87 @@ async function go(page, name) {
     ok((await page.locator('path.pp-dist').count()) >= 3, 'distance lines on the map (GC, RL, sea lanes)');
     await page.screenshot({ path: `${out}/30-distances.png` });
     ok(/Along my route/.test(await page.locator('#pane').innerText()), 'places along my route listed');
+    // ports and canals: one button shows them and hides them again (owner, 2026-11-22)
+    {
+        const pcBtn = page.locator('.ds-actions button', { hasText: /ports and canals/ }).first();
+        if (/Hide ports/.test(await pcBtn.innerText())) {
+            await pcBtn.click(); // an earlier check left them on
+            await page.waitForTimeout(300);
+        }
+        ok(/Show ports and canals/.test(await pcBtn.innerText()), 'Distances: the button says "Show ports and canals" while they are hidden');
+        await pcBtn.click();
+        await page.evaluate(() => window.__map.setView([50.6, 1.0], 7, { animate: false }));
+        await page.waitForTimeout(600);
+        ok(/Hide ports and canals/.test(await pcBtn.innerText()) && (await page.locator('.pp-place-dot--port').count()) > 0, 'after a click: ports on the map and the same button says "Hide ports and canals"');
+        // port names beside their dots, never on top of a dot or another name (owner's report: "port names and dot … overlapping")
+        const ov = await page.evaluate(() => {
+            const els = [...document.querySelectorAll('.pp-place-label, .pp-place-dot')];
+            const r = els.map(e => e.getBoundingClientRect());
+            const what = e => (e.className.includes('label') ? e.textContent : (e.getAttribute('title') || e.className).split(',')[0]);
+            let n = 0;
+            const pairs = [];
+            for (let i = 0; i < r.length; i++)
+                for (let j = i + 1; j < r.length; j++) {
+                    const a = r[i], b = r[j];
+                    if (els[i].parentElement === els[j].parentElement) continue; // a dot and its own name
+                    const isPort = e => !!e.parentElement.querySelector('.pp-place-dot--port');
+                    if (!isPort(els[i]) && !isPort(els[j])) continue; // only port dots and names are thinned out
+                    if (a.left < b.right - 1 && a.right > b.left + 1 && a.top < b.bottom - 1 && a.bottom > b.top + 1) {
+                        n++;
+                        pairs.push(what(els[i]) + ' / ' + what(els[j]));
+                    }
+                }
+            return { n, labels: document.querySelectorAll('.pp-place-label').length, pairs: pairs.slice(0, 4).join('; ') };
+        });
+        ok(ov.labels > 0 && ov.n === 0, `port names beside the dots, none over a dot or another name (${ov.labels} names, ${ov.n} overlaps${ov.pairs ? ': ' + ov.pairs : ''})`);
+        await page.screenshot({ path: `${out}/30b-ports.png` });
+        await pcBtn.click();
+        await page.waitForTimeout(300);
+        ok(/Show ports and canals/.test(await pcBtn.innerText()) && (await page.locator('.pp-place-dot--port').count()) === 0, 'a second click hides the ports and canals again');
+    }
+    // sea areas and limits (owner, 2026-11-22): ECA / SECA, MARPOL special areas by annex, ballast water, 3 / 12 / 24 / 50 / 200 nm
+    {
+        await go(page, 'Settings');
+        const ch = page.locator('details#st-charts');
+        if (!(await ch.evaluate(e => e.open))) await ch.locator('summary').click();
+        await page.waitForTimeout(200);
+        const box = ch.locator('[data-g="sea-areas"]');
+        ok((await box.locator('input[type=checkbox]').count()) >= 13 && /SOx ECAs \(SECA\)/.test(await box.innerText()) && /Annex V: garbage/.test(await box.innerText()) && /12 nm: territorial sea/.test(await box.innerText()) && /Ballast water exchange/.test(await box.innerText()), 'Settings → Nautical charts and places: switches for SOx / NOx ECAs, MARPOL Annex I / II / IV / V, 3 / 12 / 24 / 50 / 200 nm, EEZ and ballast water');
+        await page.evaluate(() => window.__map.setView([52, -4], 4, { animate: false }));
+        await box.locator('label', { hasText: 'SOx ECAs (SECA)' }).locator('input').check();
+        await page.waitForTimeout(1200);
+        const ecaPaths = await page.locator('path.pp-sea--eca').count();
+        const labs = await page.locator('.pp-sea-label').allInnerTexts();
+        ok(ecaPaths >= 5 && labs.some(t => /North Sea ECA/.test(t)) && seaHits.includes('imo.json'), `SOx ECAs drawn from the downloaded data (${ecaPaths} lines; names: ${labs.slice(0, 4).join(', ')})`);
+        const tip = await page.locator('.pp-sea-label', { hasText: 'North Sea ECA' }).first().getAttribute('title').catch(() => '');
+        ok(/0\.10 % sulphur/.test(tip || '') && /Source: MARPOL Annex VI/.test(tip || ''), 'pointing at an area name gives its rule and source: ' + (tip || '').slice(0, 110));
+        ok(/IMO area/.test(await box.locator('.g-status').innerText().catch(() => '')) && /What the lines on the map are/.test(await box.innerText()), 'status line and the list of what the lines are');
+        await box.locator('label', { hasText: 'Annex V: garbage' }).locator('input').check();
+        await page.waitForTimeout(500);
+        ok((await page.locator('path.pp-sea--a5').count()) >= 3, 'Annex V special areas drawn (' + (await page.locator('path.pp-sea--a5').count()) + ' lines)');
+        await box.locator('label', { hasText: 'Also adopted, not yet in force' }).locator('input').uncheck();
+        await page.waitForTimeout(500);
+        const labs2 = await page.locator('.pp-sea-label').allInnerTexts();
+        ok(!labs2.some(t => /North-East Atlantic/.test(t)) && labs.some(t => /North-East Atlantic/.test(t)), 'the adopted North-East Atlantic ECA (not yet in force) can be left out');
+        await page.screenshot({ path: `${out}/30c-sea-areas.png` });
+        // distance lines (tiles fetched for the view only, from zoom 5 for the 12 nm line)
+        const zIdx = fs.existsSync(path.join(seaDir, 'zones', 'index.json'));
+        await box.locator('label', { hasText: '12 nm: territorial sea limit' }).locator('input').check();
+        await page.evaluate(() => window.__map.setView([50.2, -3.5], 4, { animate: false }));
+        await page.waitForTimeout(900);
+        if (zIdx) {
+            ok(/zoom in to see: 12 nm/.test(await box.locator('.g-status').innerText()), 'zoomed out: "zoom in to see" the 12 nm line');
+            await page.evaluate(() => window.__map.setView([50.2, -3.5], 6, { animate: false }));
+            await page.waitForTimeout(1500);
+            ok((await page.locator('path.pp-zone--ts12').count()) > 0 && seaHits.some(h => /^zones\/ts12\//.test(h)), '12 nm territorial sea line drawn from its map pieces (' + (await page.locator('path.pp-zone--ts12').count()) + ' lines)');
+            await page.screenshot({ path: `${out}/30d-12nm.png` });
+        } else ok(false, 'distance-line data (data/seaareas/zones) missing');
+        for (const t of ['SOx ECAs (SECA)', 'Annex V: garbage', '12 nm: territorial sea limit']) await box.locator('label', { hasText: t }).locator('input').uncheck();
+        await box.locator('label', { hasText: 'Also adopted, not yet in force' }).locator('input').check();
+        await page.waitForTimeout(400);
+        ok((await page.locator('path.pp-sea, path.pp-zone, .pp-sea-label').count()) === 0, 'all switched off: nothing left on the map');
+        await go(page, 'Weather');
+    }
     // free forecast (Open-Meteo) for times beyond a free Windy plan: stand-in answers, made-up numbers
     const omHits = [];
     const omFake = route => {
@@ -1624,7 +1715,10 @@ async function go(page, name) {
     ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' / ') : ''));
 
     // After an update: "What's new" at the top, once
-    await page.evaluate(() => {
+    // set while the page starts (not before the reload: the running plugin's own update check could save over it)
+    await page.addInitScript(() => {
+        if (sessionStorage.getItem('__seenOnce')) return;
+        sessionStorage.setItem('__seenOnce', '1');
         const k = 'windy-plugin-passage-plan:updates';
         localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), seen: '0.12.1', latest: null }));
     });
@@ -1633,6 +1727,10 @@ async function go(page, name) {
     await page.locator('.ub.ok').waitFor({ timeout: 10000 }).catch(() => {});
     log.push(`INFO what's new appeared after ${Date.now() - tWn} ms`);
     const wn = await page.locator('.ub.ok').innerText().catch(() => '');
+    if (!wn) {
+        await page.screenshot({ path: `${out}/21-whats-new-missing.png` });
+        log.push('INFO after reload: ' + (await page.locator('#pane').innerText().catch(() => 'no panel')).replace(/\s+/g, ' ').slice(0, 300) + ' | errors: ' + errors.slice(-3).join(' / '));
+    }
     ok(/Updated to version \d+\.\d+\.\d+/.test(wn) && /What's new/.test(wn), "after an update: what's new shown");
     await page.screenshot({ path: `${out}/21-whats-new.png` });
     // a long "What's new" must not block the panel: close button at the top, the list scrolls on its own, the panel scrolls

@@ -9,6 +9,10 @@ The plugin's own code is MIT (see LICENSE). These parts come from others and kee
 | Weather (shown, not included) | fetched at run time | Windy.com (ECMWF, ECMWF-WAM) | Windy's terms of use |
 | Free forecast fill (fetched at run time, optional) | `src/windy/forecast.ts` | Open-Meteo, https://open-meteo.com | CC BY 4.0; data by ECMWF and NOAA NCEP |
 | Seamarks overlay (fetched at run time, off by default) | `src/windy/chartLayer.ts` | OpenSeaMap, https://www.openseamap.org | Tiles CC BY-SA 2.0; data © OpenStreetMap contributors, ODbL |
+| IMO sea areas (ECAs, MARPOL special areas) | `data/seaareas/imo.json`, built by the Nav-Plugins tool `build_areas.py` | Coordinates and limits from IMO texts: MARPOL Annex VI appendix VII (IMO errata March 2018), MEPC.361(79), MEPC.392(82), MEPC.407(84), MEPC.315(74), MEPC.117(52), MEPC.154(55), MEPC.118(52), MEPC.200(62), MEPC.201(62) | Facts taken from public regulations (no IMO text is copied beyond names and coordinates). Not an official IMO product. |
+| Coastline (where a line ends "on the coast"; land / water check) | `data/seaareas/imo.json`, `src/lib/landMaskData.ts` | Natural Earth 1:10m land, https://www.naturalearthdata.com | Public domain |
+| Territorial sea (12 nm), contiguous zone (24 nm), EEZ limits | `data/seaareas/zones/ts12`, `cz24`, `eez` | Flanders Marine Institute (2023). Maritime Boundaries Geodatabase, version 12, https://www.marineregions.org (simplified by Galenea) | CC BY 4.0. No legal value. |
+| 3 / 50 / 200 nm from land | `data/seaareas/zones/nm3`, `nm50`, `nm200` | Worked out from Natural Earth 1:10m land and minor islands | Public domain |
 | Geodesics | dependency `geographiclib-geodesic` | Charles Karney | MIT |
 | Svelte, Rollup and the other build tools | `package.json` | their authors | their own licences (MIT and similar) |
 

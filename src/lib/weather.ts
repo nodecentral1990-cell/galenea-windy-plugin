@@ -45,6 +45,9 @@ export interface WxSeries {
     wavesTs?: number[];
     wavesModel?: string;
     wavesRefTime?: string;
+    /** Windy's wave forecast could not be fetched for this point (owner's report 2026-11-22: roll / pitch missing in
+     *  stretches); it is asked for again, and the waves are taken from the next point meanwhile */
+    wavesFailed?: boolean;
     /** Visibility in metres (Open-Meteo only; Windy's comes from its map layer) */
     vis?: (number | null)[];
     /** Relative humidity, % (Windy "rh" if sent; Open-Meteo relative_humidity_2m) */
@@ -99,6 +102,8 @@ export interface WxPoint {
     seaSrc?: 'windy' | 'openmeteo';
     /** Wave power (energy flux), kW per metre of wave front */
     powerKw?: number | null;
+    /** The waves are from another forecast point this far away (nm), the nearest had none */
+    wavesFromNm?: number;
     /** True when the power was worked out here (0.49 × SWH² × period) rather than sent by Windy */
     powerCalc?: boolean;
     /** Air temperature, °C */
@@ -138,6 +143,9 @@ export function fmtRun(v: string | number | undefined | null): string {
 export function forecastInfo(series: WxSeries[]): { air: string; waves: string; fetched: string; other: string[] } | null {
     const s = series.find(x => !x.model.startsWith('Open-Meteo')) ?? series[0];
     if (!s) return null;
+    // the waves from the first point that has Windy's wave forecast (the first point can be a berth on land)
+    const sw = series.find(x => x.wavesModel) ;
+    const noW = series.filter(x => x.wavesFailed).length;
     const fetched = Math.min(...series.map(x => x.fetchedAt ?? Infinity));
     // other sources (past times from earlier runs kept in the browser, Open-Meteo) with the times they cover
     const span = new Map<string, { from: number; to: number }>();
@@ -150,7 +158,7 @@ export function forecastInfo(series: WxSeries[]): { air: string; waves: string; 
     const day = (t: number) => fmtRun(t).replace(/ \d{4}/, '');
     return {
         air: `${s.model} run ${fmtRun(s.refTime)}`,
-        waves: s.wavesModel ? `${s.wavesModel} run ${fmtRun(s.wavesRefTime)}` : 'no wave data',
+        waves: (sw ? `${sw.wavesModel} run ${fmtRun(sw.wavesRefTime)}` : 'no wave data') + (noW ? ` (${noW} point${noW === 1 ? '' : 's'} without Windy's waves: asked for again; waves from the next point or Open-Meteo meanwhile)` : ''),
         fetched: isFinite(fetched) ? fmtRun(fetched) : 'unknown',
         other: [...span].sort((a, b) => a[1].from - b[1].from).map(([label, sp]) => `${label}: ${day(sp.from)} – ${day(sp.to)}`),
     };
@@ -614,6 +622,7 @@ export function buildRows(
         const speedKn = stopped ? 0 : tp && !tp.stopped && tp.stw > 0 ? tp.stw : leg ? leg.stw : 0;
         const s = nearestSeries(series, pos);
         let wx = s ? sampleSeries(s, t) : null;
+        if (wx) wx = withNeighbourWaves(wx, series, s, pos, t);
         if (wx && sweep?.has(t)) {
             // Windy's own map readings take over, but a value it could not read never wipes the downloaded one
             const sw = Object.fromEntries(Object.entries(sweep.get(t) ?? {}).filter(([, v]) => v != null)) as Partial<WxPoint>;
@@ -659,6 +668,45 @@ export function buildRows(
     });
 }
 
+const WAVE_KEYS_PT = ['hs', 'hsDir', 'hsPeriod', 'sw1', 'sw1Dir', 'sw1Period', 'sw2', 'sw2Dir', 'sw2Period', 'seaHs', 'seaDir', 'seaPeriod', 'seaWindy', 'seaSrc', 'powerKw', 'powerCalc'] as const;
+/** Waves from another point no farther than this when the nearest has none at that time */
+export const WAVES_NEAR_NM = 100;
+
+/**
+ * When the nearest forecast point has no waves at time t (Windy's wave forecast failed there, or the point is on land),
+ * the waves come from the next nearest point (within WAVES_NEAR_NM) that has them (owner's report 2026-11-22:
+ * roll and pitch missing in stretches of the graph). `wavesFromNm` says how far away that point is.
+ */
+export function withNeighbourWaves(wx: WxPoint, series: WxSeries[], s: WxSeries | null, pos: { lat: number; lon: number }, t: number): WxPoint {
+    if (valid(wx.hs) || valid(wx.sw1)) return wx;
+    const cand = series
+        .filter(x => x !== s)
+        .map(x => ({ x, d: nmApart(x, pos) }))
+        .filter(c => c.d <= WAVES_NEAR_NM)
+        .sort((a, b) => a.d - b.d)
+        .slice(0, 6);
+    for (const c of cand) {
+        const o = sampleSeries(c.x, t);
+        if (!o || !(valid(o.hs) || valid(o.sw1))) continue;
+        const out: WxPoint = { ...wx, wavesFromNm: Math.round(c.d) };
+        const rec = out as unknown as Record<string, unknown>;
+        const src = o as unknown as Record<string, unknown>;
+        const keepSea = valid(wx.seaHs) && wx.seaWindy;
+        for (const k of WAVE_KEYS_PT) {
+            if (keepSea && (k === 'seaHs' || k === 'seaDir' || k === 'seaPeriod' || k === 'seaWindy' || k === 'seaSrc')) continue;
+            if (src[k] !== undefined) rec[k] = src[k];
+        }
+        return out;
+    }
+    return wx;
+}
+
+function nmApart(a: { lat: number; lon: number }, b: { lat: number; lon: number }): number {
+    const dLat = a.lat - b.lat;
+    const dLon = norm180(a.lon - b.lon) * Math.cos((b.lat * Math.PI) / 180);
+    return Math.sqrt(dLat * dLat + dLon * dLon) * 60;
+}
+
 /** Forecast points further than this from the ship are not used for it. */
 const MAX_SERIES_NM = 150;
 
@@ -680,7 +728,8 @@ function nearestSeries(series: WxSeries[], pos: { lat: number; lon: number }): W
 /** Weather at a time and place from the fetched forecast points (null if none close enough or beyond the forecast). */
 export function weatherAt(series: WxSeries[], pos: { lat: number; lon: number }, t: number): WxPoint | null {
     const s = nearestSeries(series, pos);
-    return s ? sampleSeries(s, t) : null;
+    const wx = s ? sampleSeries(s, t) : null;
+    return wx ? withNeighbourWaves(wx, series, s, pos, t) : null;
 }
 
 /**

@@ -224,9 +224,11 @@ const CSS = String.raw`
 /* map markers for ports, canals, distance ends (outside the panel) */
 .pp-place-icon { background: none; border: 0; }
 .pp-place-dot { width: 10px; height: 10px; margin: 1px; border-radius: 50%; border: 2px solid #fff; background: #0b3d91; box-shadow: 0 0 2px #000; }
-.pp-place-dot--port { width: 8px; height: 8px; margin: 2px; border-width: 1px; border-color: #0b3d91; background: #7fb2ff; }
+.pp-place-dot--port { width: 6px; height: 6px; margin: 2px; border-width: 2px; border-color: #7fb2ff; background: transparent; box-shadow: 0 0 0 1px #0b3d91; }
 .pp-place-dot--pass { border-color: #00b3a4; background: #fff; }
-.pp-place-label { position: absolute; left: 14px; top: -3px; white-space: nowrap; font: 600 11px system-ui, sans-serif; color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; pointer-events: none; }
+.pp-sea-icon { background: none; border: 0; }
+.pp-sea-label { position: absolute; transform: translate(-50%, -50%); padding: 0 5px; border: 1px solid; border-radius: 3px; background: rgba(8,22,44,.72); color: #fff; white-space: nowrap; font: 600 10.5px/15px system-ui, sans-serif; pointer-events: auto; cursor: help; }
+.pp-place-label { position: absolute; left: 14px; top: -2px; padding: 0 4px; border-radius: 3px; background: rgba(8,22,44,.78); white-space: nowrap; font: 600 11px/15px system-ui, sans-serif; color: #fff; pointer-events: none; }
 
 /* range rings labels (on the map) */
 .pp-ring-icon { background: none; border: 0; }
