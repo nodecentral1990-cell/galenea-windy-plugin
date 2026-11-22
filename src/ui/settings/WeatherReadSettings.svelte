@@ -1,11 +1,11 @@
 <!-- Settings → Weather reading (owner, 2026-11-19: weather by itself, area, downloads that work with the tab hidden) -->
-<label class="gs-check" title="After you change a waypoint the forecast for the changed legs is fetched by itself (about 2 s after you stop editing); the other legs come from memory">
+<label class="gs-check" title="After a change of the route the weather is shown at once from the forecast already downloaded; only points far (more than 25 nm) from any downloaded point are fetched, a second or so after you stop editing">
     <input type="checkbox" bind:checked={$wxAuto.followRoute} />
-    Update the weather by itself after a change of the route
+    After a change of the route: show the weather at once, download only the new parts
 </label>
-<label class="gs-check" title="While the plugin is open, the route's (and the area's) forecast is fetched again when it is 3 hours old">
+<label class="gs-check" title="While the plugin is open, once an hour the plugin asks Windy (one small request) whether a newer forecast run is out; only then are the route's and the area's forecasts fetched again">
     <input type="checkbox" bind:checked={$wxAuto.every3h} />
-    Fetch the forecast again every 3 hours
+    Get the new forecast by itself when Windy has a newer run (checked every hour)
 </label>
 <label class="gs-check" title="Sea (wind waves) and currents from Open-Meteo marine (Météo-France), visibility from Open-Meteo, downloaded with the forecast: free, and it works while the Windy tab is hidden or minimised">
     <input type="checkbox" bind:checked={$wxAuto.extras} />

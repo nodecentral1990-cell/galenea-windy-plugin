@@ -1,12 +1,12 @@
 <!-- Weather for an area (owner, 2026-11-19): north / south latitude, west / east longitude make a box; "Get weather"
-     downloads the forecast on a grid over it (0.5°–3° apart, at most 300 points) and it is fetched again every 3 hours.
+     downloads the forecast on a grid over it (0.5°–3° apart, at most 300 points); fetched again when Windy has a newer run.
      A route inside the box then needs no download of its own when it is changed. -->
 <div class="aw" data-g="wx-area">
     <div class="aw__head">
         <label class="switch aw__on" title="Use the area's forecast for the weather"><input type="checkbox" checked={$wxAuto.areaOn} on:change={e => (e.currentTarget.checked ? on() : areaOff())} /><span class="knob" /><b>Weather for an area</b></label>
         <Hint title="Weather for an area">
             <p>Type the <b>north and south latitude</b> and the <b>west and east longitude</b> of the area (e.g. <span class="mono">48 30N</span>, <span class="mono">005 15W</span>, or −5.25), or take them from the map you see or from your route. <b>Get weather</b> downloads the forecast on a grid over the box (0.5°, 1°, 2° or 3° apart: the finest that keeps to 300 points, one download each).</p>
-            <p>While the plugin is open it is fetched again every 3 hours by itself. A route inside the box then needs no download of its own when you change it: good for trying different tracks round bad weather. Sea, currents and visibility come with it (Open-Meteo), so it also works with the Windy tab hidden.</p>
+            <p>While the plugin is open it is fetched again by itself when Windy has a newer forecast run (checked every hour). A route inside the box then needs no download of its own when you change it: good for trying different tracks round bad weather. Sea, currents and visibility come with it (Open-Meteo), so it also works with the Windy tab hidden.</p>
             <p>The box is drawn on the map (yellow, dashed). Big areas take longer: about 1–2 minutes for 300 points.</p>
         </Hint>
     </div>
@@ -22,7 +22,7 @@
         <button class="pp-btn pp-btn--ghost small" disabled={$route.waypoints.length < 2} on:click={fromRoute} title="Round the route, 2° extra on each side">Round the route</button>
         {#if grid}<span class="pp-note">{grid.points.length} points, every {grid.step}°</span>{:else if anyTyped}<span class="pp-note pp-err">Check the four values (north of south; at most about 50° × 50°)</span>{/if}
     </div>
-    {#if $areaStatus}<div class="g-status" class:g-status--ok={/^Done|^Updated/.test($areaStatus)}>{$areaStatus}{#if $lastAreaFetch && $wxAuto.every3h}{" "}Next update by itself about {hm($lastAreaFetch + 3 * 3600e3)} UTC.{/if}</div>{/if}
+    {#if $areaStatus}<div class="g-status" class:g-status--ok={/^Done|^Updated/.test($areaStatus)}>{$areaStatus}{#if $lastAreaFetch && $wxAuto.every3h}{" "}Fetched again by itself when Windy has a newer run.{/if}</div>{/if}
 </div>
 
 <script lang="ts">
@@ -45,7 +45,6 @@
     $: grid = area ? areaGrid(area) : null;
     $: anyTyped = !!(nTxt || sTxt || wTxt || eTxt);
 
-    const hm = (t: number) => new Date(t).toISOString().slice(11, 16);
     function save() {
         if (area && grid) wxAuto.update(x => ({ ...x, area }));
     }

@@ -10,6 +10,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.27.0',
+        date: '2026-11-22',
+        notes: [
+            'Weather after a route change at once: move or add a waypoint, change a speed, and the weather table, graphs and polar show the new route straight away from the forecast already downloaded. Only a new part of the route more than 25 nm from any downloaded forecast is fetched, by itself. Nothing is downloaded again unless you press "Get latest forecast" or Windy has a newer forecast run (checked every hour).',
+        ],
+    },
+    {
         version: '0.26.0',
         date: '2026-11-13',
         notes: [

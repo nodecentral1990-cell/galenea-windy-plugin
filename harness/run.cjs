@@ -1526,11 +1526,11 @@ async function go(page, name) {
         await page.route(/marine-api\.open-meteo\.com/, mFake);
         await page.route(/api\.open-meteo\.com\/v1\/forecast/, vFake);
         const wr = await settings('Weather reading');
-        for (const [txt, want] of [['Update the weather by itself', true], ['Fetch the forecast again every 3 hours', true], ['Download sea, currents and visibility', true], ["Also read Windy's own map", false]]) {
+        for (const [txt, want] of [['After a change of the route: show the weather at once', true], ['Get the new forecast by itself when Windy has a newer run', true], ['Download sea, currents and visibility', true], ["Also read Windy's own map", false]]) {
             const cb = wr.locator('label', { hasText: txt }).locator('input');
             if ((await cb.isChecked()) !== want) await cb.click();
         }
-        ok((await wr.locator('label', { hasText: 'Update the weather by itself' }).count()) === 1 && (await wr.locator('label', { hasText: 'Download sea, currents and visibility' }).count()) === 1, 'Settings → Weather reading: by itself after route changes, every 3 hours, downloads that work with the tab hidden, Windy map optional');
+        ok((await wr.locator('label', { hasText: 'After a change of the route: show the weather at once' }).count()) === 1 && (await wr.locator('label', { hasText: 'when Windy has a newer run' }).count()) === 1 && (await wr.locator('label', { hasText: 'Download sea, currents and visibility' }).count()) === 1, 'Settings → Weather reading: route changes at once, new run by itself, downloads that work with the tab hidden, Windy map optional');
         // the forecast with the tab hidden: it must finish (nothing is read from Windy's drawn map any more)
         await go(page, 'Weather');
         await page.evaluate(() => { window.__hidden = true; document.dispatchEvent(new Event('visibilitychange')); });
@@ -1548,14 +1548,29 @@ async function go(page, name) {
         await lastLat.fill(oldLat.replace(/^(\d+)/, m => String(Math.min(80, Number(m) + 1)).padStart(m.length, '0')));
         await lastLat.press('Enter');
         await lastLat.blur();
-        await page.waitForFunction(() => /Updated by itself at/.test(document.querySelector('#pane')?.textContent || '') || /Updated by itself/.test(document.body.textContent || ''), null, { timeout: 30000 }).catch(() => {});
+        // at once (before any download): the weather screens use the forecast already downloaded
+        await page.waitForTimeout(300);
         await go(page, 'Weather');
-        await page.waitForFunction(() => /Updated by itself at \d\d:\d\d UTC/.test(document.querySelector('#pane')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
+        const quickTxt = await page.locator('#pane').innerText();
+        ok(!/The route changed after the forecast/.test(quickTxt) && (await page.locator('.wt tbody tr, table.wxt tbody tr, .tablewrap tbody tr').count()) > 0, 'after a waypoint is moved the weather is shown at once from the forecast already downloaded (no waiting, no button)');
+        await page.waitForFunction(() => /Updated at \d\d:\d\d UTC: \d+ new forecast point/.test(document.querySelector('#pane')?.textContent || ''), null, { timeout: 30000 }).catch(() => {});
         const autoTxt = await page.locator('#pane').innerText();
         const fetched = counts.marine - before;
-        ok(/Updated by itself at \d\d:\d\d UTC/.test(autoTxt) && !/The route changed after the forecast/.test(autoTxt), 'after a waypoint is moved the weather is updated by itself (no button)');
+        ok(/Updated at \d\d:\d\d UTC: \d+ new forecast point/.test(autoTxt), 'then only the new part of the route is downloaded, by itself');
         ok(fetched > 0 && fetched < before, `only the changed legs are fetched again (${fetched} new points, first time ${before})`);
-        ok(/By itself: after each route change · every 3 h/.test(autoTxt), 'the forecast card says what happens by itself');
+        ok(/By itself: route changes shown at once \(only new parts downloaded\) · a newer Windy run fetched when it is out/.test(autoTxt), 'the forecast card says what happens by itself');
+        // a small nudge of a waypoint: nothing is downloaded at all
+        const before2 = counts.marine;
+        await go(page, 'Route');
+        const lastLon = page.locator('.tablewrap tbody tr').last().locator('input.pos').nth(1);
+        const oldLon = await lastLon.inputValue();
+        await lastLon.fill(oldLon.replace(/(\d+)\.(\d)/, (m, a, b) => `${a}.${(Number(b) + 3) % 10}`));
+        await lastLon.press('Enter');
+        await lastLon.blur();
+        await page.waitForTimeout(2500);
+        await go(page, 'Weather');
+        const nudgeTxt = await page.locator('#pane').innerText();
+        ok(counts.marine === before2 && /nothing new to download/.test(nudgeTxt), `a small change of a waypoint downloads nothing (${counts.marine - before2} requests): ` + (nudgeTxt.match(/Weather shown from[^\n]*/) || [''])[0].slice(0, 110));
         // the area box
         const aw = page.locator('[data-g=wx-area]');
         await aw.locator('button', { hasText: 'Round the route' }).click();
@@ -1564,14 +1579,14 @@ async function go(page, name) {
         await aw.locator('button', { hasText: 'Get weather' }).click();
         await page.waitForSelector('.wo', { state: 'detached', timeout: 180000 });
         await page.waitForTimeout(500);
-        ok(/Done at \d\d:\d\d UTC: \d+ of \d+ points/.test(await aw.innerText()) && /Next update by itself about \d\d:\d\d UTC/.test(await aw.innerText()), 'area weather downloaded, next update by itself shown');
+        ok(/Done at \d\d:\d\d UTC: \d+ of \d+ points/.test(await aw.innerText()) && /Fetched again by itself when Windy has a newer run/.test(await aw.innerText()), 'area weather downloaded; fetched again by itself when Windy has a newer run');
         ok((await page.locator('path.pp-wx-area').count()) === 1, 'the area is drawn on the map');
         await page.screenshot({ path: `${out}/37-area-weather.png` });
         await aw.locator('label.switch input').click();
         ok((await page.locator('path.pp-wx-area').count()) === 0, 'area switched off: box gone from the map');
         // back to the old way for anything after this
         const wr2 = await settings('Weather reading');
-        for (const txt of ['Update the weather by itself', 'Fetch the forecast again every 3 hours']) {
+        for (const txt of ['After a change of the route: show the weather at once', 'Get the new forecast by itself when Windy has a newer run']) {
             const cb = wr2.locator('label', { hasText: txt }).locator('input');
             if (await cb.isChecked()) await cb.click();
         }
@@ -1614,7 +1629,9 @@ async function go(page, name) {
         localStorage.setItem(k, JSON.stringify({ ...JSON.parse(localStorage.getItem(k) || '{}'), seen: '0.12.1', latest: null }));
     });
     await page.reload();
-    await page.waitForTimeout(800);
+    const tWn = Date.now();
+    await page.locator('.ub.ok').waitFor({ timeout: 10000 }).catch(() => {});
+    log.push(`INFO what's new appeared after ${Date.now() - tWn} ms`);
     const wn = await page.locator('.ub.ok').innerText().catch(() => '');
     ok(/Updated to version \d+\.\d+\.\d+/.test(wn) && /What's new/.test(wn), "after an update: what's new shown");
     await page.screenshot({ path: `${out}/21-whats-new.png` });

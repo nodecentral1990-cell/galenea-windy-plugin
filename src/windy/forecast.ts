@@ -261,6 +261,14 @@ async function fillGaps(s: WxSeries, range: { start: number; end: number }): Pro
     return om ? spliceSeries(s, om, 'openmeteo', omLabel) : s;
 }
 
+/** The forecast run Windy has now for a point (asked fresh, not from memory), UTC ms; undefined if not known */
+export async function latestRun(lat: number, lon: number): Promise<number | undefined> {
+    const r = (await getPointForecastData('ecmwf', { lat, lon, step: 3, days: 1 } as never)) as unknown as Payload;
+    const ref = r?.data?.header?.refTime ?? r?.data?.header?.update;
+    const t = ref ? Date.parse(String(ref).replace(' ', 'T')) : NaN;
+    return isFinite(t) ? t : undefined;
+}
+
 // ---------- Sea, current and visibility downloaded with the forecast (Open-Meteo; owner's report 2026-11-19) ----------
 const extraCache = new Map<string, Promise<Extra | null>>();
 /** How the downloads went (for the Weather tab and the activity log) */

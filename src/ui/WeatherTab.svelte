@@ -79,7 +79,7 @@
     {/if}
     <div class="pp-note wx-auto" data-g="wx-auto">
         <Icon name="clock" size={13} />
-        {#if $wxAuto.followRoute || $wxAuto.every3h}By itself: {[$wxAuto.followRoute ? 'after each route change' : '', $wxAuto.every3h ? `every 3 h${$lastRouteFetch ? ` (next about ${hm($lastRouteFetch + 3 * 3600e3)} UTC)` : ''}` : ''].filter(Boolean).join(' · ')}{:else}Updates by itself: off{/if}
+        {#if $wxAuto.followRoute || $wxAuto.every3h}By itself: {[$wxAuto.followRoute ? 'route changes shown at once (only new parts downloaded)' : '', $wxAuto.every3h ? 'a newer Windy run fetched when it is out (checked hourly)' : ''].filter(Boolean).join(' · ')}{:else}Updates by itself: off{/if}
         <Gear host="wx-forecast" line chips={[{ id: 'weather' }]} />
     </div>
     <AreaWeather />
@@ -158,10 +158,9 @@
     import { beaufort, buildRows, encounterOf, forecastInfo, rollPeriodFor, seaDirOf, type WxRow } from '../lib/weather';
     import { writeXlsx } from '../lib/formats/xlsx';
     import { writeCsv } from '../lib/formats/table';
-    import { autoLayers, lastRouteFetch, readLayer, refreshWeather, stopWeather, weatherBusy, weatherStatus, wxAuto } from '../windy/weatherJobs';
+    import { autoLayers, readLayer, refreshWeather, stopWeather, weatherBusy, weatherStatus, wxAuto } from '../windy/weatherJobs';
     import AreaWeather from './AreaWeather.svelte';
     let moreSrc = false;
-    const hm = (t: number) => new Date(t).toISOString().slice(11, 16);
     import { mapProduct, plan, planKey, route, tableStepH, thresholds, timelineTs, updateRoute, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
     import { downloadFile } from './download';
     import DateTimeField from './DateTimeField.svelte';

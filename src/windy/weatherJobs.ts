@@ -26,7 +26,7 @@ import {
     wxSweepKey,
     wxSweepValid,
 } from '../state';
-import { clearExtraCache, clearForecastCache, extraStatus, fetchSeries, lastSweepReport, omStatus, runLimited, setFreeFill, sweep, windyCoverage, type SweepKind } from './forecast';
+import { clearExtraCache, clearForecastCache, extraStatus, fetchSeries, latestRun, lastSweepReport, omStatus, runLimited, setFreeFill, sweep, windyCoverage, type SweepKind } from './forecast';
 import store from '@windy/store';
 import { logEvent } from '../lib/activityLog';
 import { recordRoutePlanned } from '../lib/usage';
@@ -94,7 +94,31 @@ export const areaSeries = writable<WxSeries[]>([]);
 export const areaStatus = writable('');
 export const areaBusy = writable(false);
 export const areaStep = writable<number | null>(null);
-let routeSeries: WxSeries[] = [];
+/**
+ * Every forecast fetched for routes in this session, by position (owner, 2026-11-22: "weather once downloaded it should
+ * not redownload unless user ask for it or new weather data is availble ... it has to be almost instant"). A route change
+ * uses these at once; only points farther than COVER_NM from any of them (and outside the area) are fetched.
+ */
+const pool = new Map<string, WxSeries>();
+const pkey = (lat: number, lon: number) => `${lat.toFixed(2)},${lon.toFixed(2)}`;
+/** A forecast point this close (nm) to a route point is good enough for it (forecast models are 9–28 km grids) */
+export const COVER_NM = 25;
+const nmBetween = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) => {
+    const dLat = a.lat - b.lat;
+    const dLon = ((((a.lon - b.lon + 540) % 360) + 360) % 360 - 180) * Math.cos((a.lat * Math.PI) / 180);
+    return Math.hypot(dLat, dLon) * 60;
+};
+/** Distance to the nearest forecast already downloaded (route points and area), nm */
+function coveredNm(p: { lat: number; lon: number }): number {
+    let best = Infinity;
+    for (const s of pool.values()) best = Math.min(best, nmBetween(p, s));
+    if (get(wxAuto).areaOn) for (const s of get(areaSeries)) best = Math.min(best, nmBetween(p, s));
+    return best;
+}
+/** Route points with no downloaded forecast near them */
+export function missingPoints(): { lat: number; lon: number }[] {
+    return routePointsByLeg(get(basePlan)).filter(p => coveredNm(p) > COVER_NM);
+}
 
 let signal = { cancelled: false };
 export const stopWeather = () => (signal.cancelled = true);
@@ -102,14 +126,14 @@ export const stopWeather = () => (signal.cancelled = true);
 /** Route and area forecasts together, as the weather uses them */
 function publish(): void {
     const a = get(wxAuto).areaOn ? get(areaSeries) : [];
-    wxSeries.set([...routeSeries, ...a]);
+    wxSeries.set([...pool.values(), ...a]);
 }
 
 /**
  * Forecast along the route (fresh = ask again even for points already fetched), then, if asked for, Windy's map.
  * `quiet` = by itself (after a route change or the 3-hourly refresh): no progress window, nothing on the map moves.
  */
-export async function refreshWeather(opts: { fresh?: boolean; title?: string; quiet?: boolean } = {}): Promise<void> {
+export async function refreshWeather(opts: { fresh?: boolean; title?: string; quiet?: boolean; only?: { lat: number; lon: number }[] } = {}): Promise<void> {
     if (get(weatherBusy)) return;
     weatherBusy.set(true);
     const quiet = !!opts.quiet;
@@ -128,7 +152,7 @@ export async function refreshWeather(opts: { fresh?: boolean; title?: string; qu
         // points leg by leg, so after an edit only the changed legs are fetched; inside the area its grid is used
         const area = auto.areaOn && auto.area && get(areaSeries).length && (get(areaStep) ?? 9) <= 1 ? auto.area : null;
         const all = routePointsByLeg(bp0);
-        const pts = area ? all.filter(p => !inArea(area, p.lat, p.lon)) : all;
+        const pts = opts.only ?? (area ? all.filter(p => !inArea(area, p.lat, p.lon)) : all);
         if (!all.length) {
             weatherStatus.set('No route to fetch the forecast for.');
             return;
@@ -148,14 +172,16 @@ export async function refreshWeather(opts: { fresh?: boolean; title?: string; qu
             },
             sig,
         );
-        // the route changed again while this ran: the next run (already waiting) does it
-        if (quiet && key !== get(planKey)) return;
         const ok = res.filter((s): s is NonNullable<typeof s> => !!s);
-        routeSeries = ok;
+        // kept (a fresh fetch replaces the older forecast for the same point); the screens use them at once
+        for (const s of ok) pool.set(pkey(s.lat, s.lon), s);
         publish();
-        wxSweep.set(new Map());
-        wxSweepKey.set('');
-        wxPlanKey.set(key);
+        if (!opts.only) {
+            wxSweep.set(new Map());
+            wxSweepKey.set('');
+        }
+        wxPlanKey.set(get(planKey));
+        void key;
         lastRouteFetch.set(Date.now());
         const failed = res.length - ok.length;
         logEvent('weather', `Forecast: ${ok.length} of ${pts.length} points in ${((Date.now() - t0) / 1000).toFixed(1)} s${sig.cancelled ? ' (stopped)' : ''}${quiet ? ' (by itself)' : ''}`, {
@@ -177,7 +203,9 @@ export async function refreshWeather(opts: { fresh?: boolean; title?: string; qu
         weatherStatus.set(
             sig.cancelled
                 ? `Stopped: ${ok.length} points fetched.`
-                : `${quiet ? 'Updated by itself' : 'Done'} at ${hm} UTC: ${ok.length} forecast points along the route${all.length > pts.length ? ` (+ ${all.length - pts.length} from the area)` : ''}${failed ? `, ${failed} failed` : ''}.`,
+                : opts.only
+                  ? `Updated at ${hm} UTC: ${ok.length} new forecast point${ok.length === 1 ? '' : 's'} for the changed part of the route; the rest from the forecast already downloaded.${failed ? ` ${failed} failed.` : ''}`
+                  : `${quiet ? 'Updated by itself' : 'Done'} at ${hm} UTC: ${ok.length} forecast points along the route${all.length > pts.length ? ` (+ ${all.length - pts.length} from the area)` : ''}${failed ? `, ${failed} failed` : ''}.`,
         );
         if (layers && !sig.cancelled && ok.length) {
             const done: string[] = [];
@@ -226,8 +254,8 @@ export async function refreshArea(opts: { fresh?: boolean; quiet?: boolean } = {
         lastAreaFetch.set(Date.now());
         if (!get(wxAuto).areaOn) wxAuto.update(x => ({ ...x, areaOn: true }));
         publish();
-        // the route's weather may now come from the area: count it as up to date if it was
-        if (routeSeries.length || !get(route).waypoints.length) wxPlanKey.set(get(planKey));
+        // the route's weather may now come from the area: shown at once
+        wxPlanKey.set(get(planKey));
         const hm = new Date().toISOString().slice(11, 16);
         areaStatus.set(`${opts.quiet ? 'Updated by itself' : 'Done'} at ${hm} UTC: ${ok.length} of ${g.points.length} points, every ${g.step}°${ok.length < g.points.length ? ` (${g.points.length - ok.length} not answered)` : ''}.`);
         logEvent('weather', `Area forecast: ${ok.length} of ${g.points.length} points (${g.step}°) in ${((Date.now() - t0) / 1000).toFixed(1)} s${opts.quiet ? ' (by itself)' : ''}`, { area: a.area, extras: { ...extraStatus } });
@@ -247,40 +275,91 @@ export function areaOff(): void {
     publish();
 }
 
-// ---- by itself: after a change of the route, and every 3 hours ----
+// ---- by itself: after a change of the route, and when Windy has a newer forecast run ----
 let routeTimer: ReturnType<typeof setTimeout> | null = null;
 let clock: ReturnType<typeof setInterval> | null = null;
 let unsubs: (() => void)[] = [];
-const THREE_H = 3 * 3600e3;
+/** Last time we asked Windy whether a newer run is out */
+let lastRunCheck = 0;
+const HOUR = 3600e3;
+
+/** The newest forecast run (ms) among the forecasts kept */
+function newestRun(): number {
+    let t = 0;
+    for (const s of [...pool.values(), ...(get(wxAuto).areaOn ? get(areaSeries) : [])]) {
+        const r = s.refTime ? Date.parse(String(s.refTime).replace(' ', 'T')) : NaN;
+        if (isFinite(r)) t = Math.max(t, r);
+    }
+    return t;
+}
+
+/** After a route change: the weather from what is already downloaded, at once; only uncovered points are fetched */
+function onRouteChange(): void {
+    if (get(route).waypoints.length < 2) return;
+    const have = pool.size > 0 || (get(wxAuto).areaOn && get(areaSeries).length > 0);
+    if (have) {
+        // instant: every screen uses the kept forecasts (nearest point) for the new route
+        wxPlanKey.set(get(planKey));
+        publish();
+    }
+    if (!get(wxAuto).followRoute) return;
+    if (routeTimer) clearTimeout(routeTimer);
+    // wait until the editing pauses (dragging a waypoint changes the route many times a second)
+    routeTimer = setTimeout(() => {
+        routeTimer = null;
+        if (!have) {
+            refreshWeather({ quiet: true }).catch(() => {});
+            return;
+        }
+        const miss = missingPoints();
+        if (miss.length) {
+            weatherStatus.set(`Weather shown from the forecast already downloaded; getting ${miss.length} new point${miss.length === 1 ? '' : 's'} for the new part of the route…`);
+            refreshWeather({ quiet: true, only: miss }).catch(() => {});
+        } else weatherStatus.set(`Weather shown from the forecast already downloaded (fetched ${hm(get(lastRouteFetch) ?? Date.now())} UTC): nothing new to download.`);
+    }, 1200);
+}
+const hm = (t: number) => new Date(t).toISOString().slice(11, 16);
+
+/** Ask Windy (one point, not from memory) whether a newer forecast run is out; if so, fetch the route and area again */
+async function checkNewRun(): Promise<void> {
+    lastRunCheck = Date.now();
+    const s0 = pool.values().next().value as WxSeries | undefined;
+    const have = newestRun();
+    if (!s0 || !have) return;
+    try {
+        const run = await latestRun(s0.lat, s0.lon);
+        if (run && run > have + 60e3) {
+            logEvent('weather', `Newer Windy run ${new Date(run).toISOString()} (had ${new Date(have).toISOString()}): fetching again`);
+            if (get(wxAuto).areaOn && get(wxAuto).area) await refreshArea({ fresh: true, quiet: true });
+            await refreshWeather({ fresh: true, quiet: true });
+        }
+    } catch {
+        /* offline or Windy busy: try again next hour */
+    }
+}
 
 /** Start the automatic updates (plugin open) */
 export function startAutoWeather(): void {
     stopAutoWeather();
     let first = true;
+    let lastKey = get(planKey);
     unsubs.push(
         basePlan.subscribe(() => {
             if (first) {
                 first = false;
                 return;
             }
-            if (!get(wxAuto).followRoute || get(route).waypoints.length < 2) return;
-            if (routeTimer) clearTimeout(routeTimer);
-            // wait until the editing pauses (dragging a waypoint changes the route many times a second)
-            routeTimer = setTimeout(() => {
-                routeTimer = null;
-                if (get(wxPlanKey) !== get(planKey) || !routeSeries.length) refreshWeather({ quiet: true }).catch(() => {});
-            }, 2500);
+            // only a change of the track matters (ETD, speeds and stops need no new forecast)
+            const k = get(planKey);
+            if (k === lastKey && get(wxPlanKey) === k) return;
+            lastKey = k;
+            onRouteChange();
         }),
     );
-    // every few minutes: anything older than 3 hours is fetched again (timers in a hidden tab slow down but still run)
+    // every few minutes: once an hour, ask whether Windy has a newer run (timers in a hidden tab slow down but still run)
     clock = setInterval(() => {
-        const a = get(wxAuto);
-        if (!a.every3h) return;
-        const now = Date.now();
-        const r = get(lastRouteFetch);
-        const ar = get(lastAreaFetch);
-        if (a.areaOn && a.area && ar != null && now - ar > THREE_H && !get(areaBusy)) refreshArea({ fresh: true, quiet: true }).catch(() => {});
-        else if (r != null && now - r > THREE_H && get(route).waypoints.length >= 2) refreshWeather({ fresh: true, quiet: true }).catch(() => {});
+        if (!get(wxAuto).every3h || Date.now() - lastRunCheck < HOUR || get(weatherBusy) || get(areaBusy)) return;
+        checkNewRun().catch(() => {});
     }, 5 * 60e3);
     // on opening: the route's forecast from memory / the web without a click, the area's too
     const a = get(wxAuto);
