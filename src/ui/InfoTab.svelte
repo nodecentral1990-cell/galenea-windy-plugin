@@ -201,7 +201,7 @@
         <li><b>{r.version}</b> ({r.date}): {r.notes.join(' ')}</li>
     {/each}
 </ul>
-<p class="pp-note">Updates: ⚙ Settings → Updates (check now, or by itself every 30 days).</p></div></details>
+<p class="pp-note">Versions 0.22.0 and older: RELEASE-HISTORY.md on the plugin's public code page (github.com/nodecentral1990-cell/galenea-windy-plugin). Updates: ⚙ Settings → Updates (check now, or by itself every 30 days).</p></div></details>
 <details class="gd"><summary>Words used in the plugin</summary><div class="gd__b"><table class="tbl words">
     <tr><td><b>SWH</b></td><td>Significant wave height: the whole sea state, sea and swell together.</td></tr>
     <tr><td><b>Sea</b></td><td>Wind sea: waves made by the local wind. From Windy's <b>wind waves</b> layer (height, direction, period), read along the route after the forecast; until then worked out from SWH and the swells, direction from the wind.</td></tr>

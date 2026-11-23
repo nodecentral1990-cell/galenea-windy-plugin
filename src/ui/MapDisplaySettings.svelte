@@ -38,9 +38,16 @@
 </label>
 {/if}
 {#if !part || part === 'ships'}
-<label class="check" title="Rings from the ship outwards: swell 1, swell 2, sea, SWH, wind barb. Amber = alert, red = limit or IMO warning.">
+<label class="check" title="One ring round the ship: an arrow head per wave from where it comes, height / period outside, wind barb on the ship. Amber = alert, red = limit or IMO warning.">
     <input type="checkbox" bind:checked={$shipWeather} />
     Show SWH, sea, swell 1, swell 2 and wind on the ship symbols (after "Get forecast" in the Weather tab)
+</label>
+<label class="check sub" data-g="glyph-style">
+    Drawn as
+    <select bind:value={$glyphStyle}>
+        <option value="ring">one ring: arrow heads, height / period outside, barb on the ship</option>
+        <option value="rings">rings: a flag per wave in its own ring, barb outside (before 0.29)</option>
+    </select>
 </label>
 <div class="swatches">
         <span class="pp-note">Flag colours (map symbols, polar diagram and ship window):</span>
@@ -98,7 +105,7 @@
     import { reopenWindows, resetAllWindows } from './floatWin';
     import { graphState } from './graphState';
     import { logEvent } from '../lib/activityLog';
-    import { cursorBar, rangeRings, flagColors, followShip, panelDim, route, shipStepH, shipStyle, shipWeather, showIsobars, showShipBox, updateRoute } from '../state';
+    import { cursorBar, glyphStyle, rangeRings, flagColors, followShip, panelDim, route, shipStepH, shipStyle, shipWeather, showIsobars, showShipBox, updateRoute } from '../state';
 
     function showAll() {
         reopenWindows();

@@ -112,6 +112,7 @@
     import PlacePicker, { type Place } from './PlacePicker.svelte';
     import { placesAlongRoute } from '../lib/distances';
     import { distanceRow } from '../lib/seaNet';
+    import { ensureSeaNet } from '../windy/seaNetLoad';
     import { fmtTime } from '../lib/format';
     import { logEvent } from '../lib/activityLog';
     import { writeXlsx } from '../lib/formats/xlsx';
@@ -144,6 +145,11 @@
         status = 'Working out…';
         await new Promise(r => setTimeout(r, 20));
         try {
+            try {
+                await ensureSeaNet();
+            } catch (e) {
+                status = `The sea-lane network could not be downloaded (${(e as Error).message}): only the great-circle and rhumb-line distances. It needs internet once; then it is kept in this browser.`;
+            }
             const t0 = performance.now();
             const r = distanceRow(from.name, from, to.name, to);
             DIST_ROWS.update(l => [...l, { row: r, a: { ...from! }, b: { ...to! } }]);

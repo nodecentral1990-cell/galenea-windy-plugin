@@ -15,7 +15,7 @@
 
 import { rhumbDirect, type LatLon } from './geo';
 import { newWaypoint, type PlanCalc, type Route, type Vessel, type Waypoint } from './model';
-import { barredRange, sicwForRpm } from './speed';
+import { barredRange, rpmAllowed, rpmLimits, sicwForRpm } from './speed';
 import { defaultSpeeds, fuelPerDay } from './optimise';
 import type { Level, WxPoint } from './weather';
 
@@ -680,8 +680,9 @@ export function speedOptions(vessel: Vessel, plannedSicw?: number): { options: S
     const out: SpeedOption[] = [];
     const add = (sicw: number | null, rpm: number | null) => {
         if (sicw == null || !(sicw > 0)) return;
-        if (rpm != null && barredRange(vessel, rpm)) {
-            barredLeftOut++;
+        if (rpm != null && !rpmAllowed(vessel, rpm)) {
+            // barred, or outside the min / max RPM (owner, 2026-11-23)
+            if (barredRange(vessel, rpm)) barredLeftOut++;
             return;
         }
         if (out.some(o => Math.abs(o.sicw - sicw) < 0.15)) return;
@@ -693,6 +694,9 @@ export function speedOptions(vessel: Vessel, plannedSicw?: number): { options: S
         const step = Math.max(1, Math.round((hi - lo) / 12));
         for (const r of rpms) add(sicwForRpm(table, r), r);
         for (let r = lo; r <= hi + 1e-9; r += step) add(sicwForRpm(table, Math.round(r)), Math.round(r));
+        // the min and max RPM themselves (if set) are choices too
+        const lim = rpmLimits(vessel);
+        for (const r of [lim.min, lim.max]) if (r != null && r >= lo - 1e-9 && r <= hi + 1e-9) add(sicwForRpm(table, r), r);
     } else {
         for (const v of defaultSpeeds(table, plannedSicw)) add(v, null);
     }

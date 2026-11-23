@@ -54,12 +54,13 @@ async function go(page, name) {
     await page.route(/tiles\.openseamap\.org|wms\.gebco\.net/, route => route.fulfill({ status: 200, contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64') }));
     // the sea-area data (public code page on GitHub) from this folder: the test computer cannot reach GitHub's raw files
     const seaDir = path.join(__dirname, '..', 'data', 'seaareas');
+    const dataDir = path.join(__dirname, '..', 'data');
     const seaHits = [];
-    await page.route(/raw\.githubusercontent\.com\/.*\/data\/seaareas\//, route => {
-        const rel = route.request().url().split('/data/seaareas/')[1];
-        seaHits.push(rel);
-        const f = path.join(seaDir, rel);
-        if (!f.startsWith(seaDir) || !fs.existsSync(f)) return route.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, body: 'not found' });
+    await page.route(/raw\.githubusercontent\.com\/.*\/data\/(seaareas|climate|seanet)\//, route => {
+        const rel = route.request().url().split('/data/seaareas/')[1] ?? '';
+        if (rel) seaHits.push(rel);
+        const f = path.join(dataDir, route.request().url().split('/data/')[1]);
+        if (!f.startsWith(dataDir) || !fs.existsSync(f)) return route.fulfill({ status: 404, headers: { 'access-control-allow-origin': '*' }, body: 'not found' });
         return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: fs.readFileSync(f) });
     });
     page.on('requestfailed', r => log.push('NOTE request failed: ' + r.url().slice(0, 120)));
@@ -157,6 +158,42 @@ async function go(page, name) {
     const lat1 = await page.locator('.tablewrap tbody tr').nth(1).locator('input.pos').first().inputValue();
     ok(lat0 !== lat1, `WP2 latitude changed after drag: ${lat0} -> ${lat1}`);
     ok((await page.locator('.pp-readout').count()) === 0, 'readout hidden after drag');
+    // Ctrl+Z / Ctrl+Y (owner, 2026-11-23): the whole drag is one step, no limit
+    {
+        const latOf = () => page.locator('.tablewrap tbody tr').nth(1).locator('input.pos').first().inputValue();
+        await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+        await page.keyboard.press('Control+z');
+        await page.waitForTimeout(200);
+        ok((await latOf()) === lat0, `Ctrl+Z puts WP2 back where it was before the drag (${await latOf()})`);
+        await page.keyboard.press('Control+y');
+        await page.waitForTimeout(200);
+        ok((await latOf()) === lat1, 'Ctrl+Y moves it again (redo)');
+        // a second drag, then two undos: back to the start; then two redos
+        const b2 = await page.locator('.pp-wp', { hasText: /^2$/ }).boundingBox();
+        await page.mouse.move(b2.x + b2.width / 2, b2.y + b2.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(b2.x + 60, b2.y + 40, { steps: 12 });
+        await page.waitForTimeout(800); // a pause in the middle of the drag stays in the same step
+        await page.mouse.move(b2.x + 70, b2.y + 50, { steps: 3 });
+        await page.mouse.up();
+        await page.waitForTimeout(300);
+        const lat2 = await latOf();
+        await page.evaluate(() => document.activeElement && document.activeElement.blur && document.activeElement.blur());
+        await page.keyboard.press('Control+z');
+        await page.waitForTimeout(150);
+        const afterOne = await latOf();
+        await page.keyboard.press('Control+z');
+        await page.waitForTimeout(150);
+        ok(lat2 !== lat1 && afterOne === lat1 && (await latOf()) === lat0, `two drags, two Ctrl+Z: one step each, back to the start (${lat2} → ${afterOne} → ${await latOf()})`);
+        await page.locator('.rt-redo').click();
+        await page.locator('.rt-redo').click();
+        await page.waitForTimeout(150);
+        ok((await latOf()) === lat2 && (await page.locator('.rt-redo').isDisabled()), 'the Redo button goes forward the same steps');
+        // leave the route as the checks below expect it (WP2 after the first drag)
+        await page.locator('.rt-undo').click();
+        await page.waitForTimeout(150);
+        ok((await latOf()) === lat1, 'the Undo button goes back one step');
+    }
 
     // Helper: screen point of a lat/lon on the map
     const scr = (lat, lon) => page.evaluate(([la, lo]) => {
@@ -462,7 +499,7 @@ async function go(page, name) {
         await page.locator('.g-card', { hasText: 'Forecast along the route' }).locator('.g-card__head [data-g="gear"]').click();
         await page.waitForTimeout(200);
         ok((await page.locator('#pane .g-fold').count()) === 1 && /Weather reading/.test(await page.locator('#pane .g-fold__title').innerText()), 'only one fold-out open at a time (opening another gear closes the first)');
-        ok((await page.locator('#pane .g-fold input[type=checkbox]').count()) === 5, 'forecast card gear: the Weather reading switches (by itself after route changes, every 3 h, downloads, Windy map, free fill; 2026-11-19)');
+        ok((await page.locator('#pane .g-fold input[type=checkbox]').count()) === 6, 'forecast card gear: the Weather reading switches (by itself after route changes, newer run, downloads, Windy map, free fill, climate beyond the forecast)');
         // Esc closes, focus back on the gear
         await page.keyboard.press('Escape');
         await page.waitForTimeout(150);
@@ -563,6 +600,21 @@ async function go(page, name) {
     const glyphsZoomed = await page.locator('.pp-glyph').count();
     ok(glyphsZoomed >= 3, `zoomed in: weather on ${glyphsZoomed} ships in view`);
     await page.screenshot({ path: `${out}/08b-ship-weather.png` });
+    // one ring (owner's choice, 2026-11-23): arrow heads on one ring, height/period boxes outside, barb on the ship
+    {
+        const ringTxt = await page.evaluate(() => Array.from(document.querySelectorAll('.pp-glyph--ring text')).map(t => t.textContent).slice(0, 8));
+        ok((await page.locator('.pp-glyph--ring').count()) === glyphsZoomed && ringTxt.some(t => /^\d+\.\d\/\d+s$/.test(t)), `ship weather drawn as one ring, heights with periods: ${ringTxt.slice(0, 4).join(', ')}`);
+        const md = await settings('Map display');
+        await md.locator('[data-g="glyph-style"] select').selectOption('rings');
+        await page.waitForTimeout(400);
+        ok((await page.locator('.pp-glyph--ring').count()) === 0 && (await page.locator('.pp-glyph').count()) > 0, 'the old rings can still be chosen (Settings → Map display → Drawn as)');
+        await md.locator('[data-g="glyph-style"] select').selectOption('ring');
+        await page.waitForTimeout(400);
+        await go(page, 'Weather');
+        await page.evaluate(() => window.__map.setView([24.5, -34.5], 6, { animate: false }));
+        await page.waitForTimeout(400);
+        await page.screenshot({ path: `${out}/08d-one-ring.png` });
+    }
     // Other ship symbols
     const mapSec = await settings('Map display');
     const symSel = mapSec.locator('select', { has: page.locator('option[value=container]') });
@@ -1166,6 +1218,35 @@ async function go(page, name) {
     await beforeRow.locator('button', { hasText: 'Open' }).click();
     await page.waitForTimeout(500);
     ok((await page.evaluate(() => JSON.parse(localStorage.getItem('windy-plugin-passage-plan:v1')).route.waypoints.length)) === wpsBeforeSp, 'and can be opened again in the Route tab');
+    // RPM advice (owner, 2026-11-23): never barred (e.g. aux blower cut-in / cut-out), never above max / below min, and why
+    {
+        await go(page, 'Speed');
+        await page.waitForTimeout(300);
+        const r0 = Number((await page.locator('table.legs tbody tr').first().locator('td').nth(3).innerText()).match(/\d+/)?.[0]);
+        const spC = await settings('Speed, RPM and fuel');
+        ok((await spC.locator('[data-g="rpm-limits"] input').count()) === 2 && /Auxiliary blower cut-in/.test(await spC.locator('#pp-barred-why').innerHTML()), 'Settings → Speed, RPM and fuel: min and max RPM boxes; "auxiliary blower cut-in / cut-out" among the barred reasons');
+        const maxIn = spC.locator('[data-g="rpm-limits"] input').nth(1);
+        await maxIn.fill(String(r0 - 3));
+        await maxIn.dispatchEvent('change');
+        await go(page, 'Speed');
+        await page.waitForTimeout(400);
+        const st1 = await page.locator('#pane').innerText();
+        const cell = await page.locator('table.legs tbody tr').first().locator('td').nth(3).innerText();
+        ok(r0 > 0 && new RegExp(`above your max RPM ${r0 - 3}: run at \\d+ RPM`).test(st1) && /▲ → \d+/.test(cell), `planned ${r0} RPM above a max of ${r0 - 3}: max advised, warning says the ETA will be later (${cell.replace(/\s+/g, ' ')})`);
+        const spD = await settings('Speed, RPM and fuel');
+        await spD.locator('[data-g="rpm-limits"] input').nth(1).fill('');
+        await spD.locator('[data-g="rpm-limits"] input').nth(1).dispatchEvent('change');
+        await spD.locator('button', { hasText: 'Add a barred range' }).click();
+        const br2 = spD.locator('table.barred tbody tr').last();
+        for (const [k, v] of [[0, String(r0 - 1)], [1, String(r0 + 1)], [2, 'Auxiliary blower cut-in / cut-out (scavenge air pressure)']]) { const inp = br2.locator('input').nth(k); await inp.fill(v); await inp.dispatchEvent('change'); }
+        await go(page, 'Speed');
+        await page.waitForTimeout(400);
+        const st2 = await page.locator('#pane').innerText();
+        ok(new RegExp(`inside the barred range ${r0 - 1}–${r0 + 1} \\(Auxiliary blower`).test(st2) && /a little (faster|slower), or \d+ RPM/.test(st2), 'planned RPM in the aux blower range: the nearest allowed RPM above and below advised, with the reason');
+        await page.screenshot({ path: `${out}/23b-rpm-advice.png` });
+        const spE = await settings('Speed, RPM and fuel');
+        await spE.locator('table.barred tbody tr').last().locator('button[title="Remove"]').click();
+    }
     await go(page, 'Optimise');
     await page.locator('.g-shell > .g-seg button', { hasText: 'Change the track' }).click();
 
@@ -1666,7 +1747,7 @@ async function go(page, name) {
         const aw = page.locator('[data-g=wx-area]');
         await aw.locator('button', { hasText: 'Round the route' }).click();
         const awTxt = await aw.innerText();
-        ok(/\d+ points, every (0\.5|1|2|3)°/.test(awTxt), 'area from the route: grid size shown');
+        ok(/\d+ points, every (0\.5|1|2|3|4|5|6)°/.test(awTxt), 'area from the route: grid size shown');
         await aw.locator('button', { hasText: 'Get weather' }).click();
         await page.waitForSelector('.wo', { state: 'detached', timeout: 180000 });
         await page.waitForTimeout(500);

@@ -21,9 +21,15 @@
 <button class="pp-btn pp-btn--ghost" on:click={addRow}><Icon name="plus" size={14} /> Add a row</button>
 {/if}
 {#if !part || part === 'barred'}
+<h5>Lowest and highest RPM</h5>
+<div class="rpm-lim" data-g="rpm-limits">
+    <label>Min RPM <input class="num" type="number" step="1" min="0" value={$vessel.minRpm ?? ''} placeholder="none" on:change={e => setLim('minRpm', e)} /></label>
+    <label>Max RPM <input class="num" type="number" step="1" min="0" value={$vessel.maxRpm ?? ''} placeholder="none" on:change={e => setLim('maxRpm', e)} /></label>
+    <Hint title="Min and max RPM"><p>The plugin <b>never advises an RPM below the min or above the max</b> (Speed & fuel, safe speed and course plan). If the plan or the ETA needs more than the max, it advises the max RPM and warns that the speed will be lower and the ETA later; below the min it advises the min. Leave empty for no limit.</p></Hint>
+</div>
 <h5>RPM the ship must not run at (barred ranges)</h5>
 <div class="pp-note g-hl">Never suggested by the plugin; ⛔ in Speed & fuel. <Hint title="Barred RPM ranges"><p>E.g. the <b>critical / barred speed range</b> (heavy vibration), or RPM where the shaft generator, auxiliary engine or
-    boiler cuts in / out. The plugin <b>never suggests these RPM</b> (safe speed plan) and marks a leg planned inside them.</p></Hint></div>
+    boiler cuts in / out, or the <b>auxiliary blower cut-in / cut-out</b> (scavenge air pressure; running there can damage the blower motor). Add as many ranges as you need. The plugin <b>never suggests these RPM</b> (safe speed plan) and, when a leg or the ETA would need one, advises the nearest allowed RPM just above or below and says why.</p></Hint></div>
 <div class="pp-scroll tw">
     <table class="tbl barred">
         <thead><tr><th>From RPM</th><th>To RPM</th><th>Why</th><th /></tr></thead>
@@ -44,6 +50,7 @@
     <option value="Shaft generator cut-in / cut-out" />
     <option value="Auxiliary engine cut-in / cut-out" />
     <option value="Exhaust gas boiler cut-in / cut-out" />
+    <option value="Auxiliary blower cut-in / cut-out (scavenge air pressure)" />
     <option value="Turbocharger / auxiliary blower changeover" />
 </datalist>
 <button class="pp-btn pp-btn--ghost" on:click={addBarred}><Icon name="plus" size={14} /> Add a barred range</button>
@@ -94,6 +101,11 @@
             return { ...v, barredRpm: t };
         });
     }
+    function setLim(k: 'minRpm' | 'maxRpm', e: Event) {
+        const t = (e.currentTarget as HTMLInputElement).value.trim();
+        const v = t === '' ? null : Number(t);
+        vessel.update(x => ({ ...x, [k]: v != null && isFinite(v) && v > 0 ? Math.round(v) : null }));
+    }
     const addBarred = () => vessel.update(v => ({ ...v, barredRpm: [...(v.barredRpm ?? []), { from: null, to: null, why: '' }] }));
     const removeBarred = (i: number) => vessel.update(v => ({ ...v, barredRpm: (v.barredRpm ?? []).filter((_, j) => j !== i) }));
     $: currentsRead = [...$wxSweepValid.values()].filter(v => v.currentKn != null).length;
@@ -125,6 +137,20 @@
 </script>
 
 <style lang="less">
+    .rpm-lim {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+        align-items: center;
+        label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        input {
+            width: 70px;
+        }
+    }
     h5 {
         margin: 8px 0 4px;
         font-size: 12px;

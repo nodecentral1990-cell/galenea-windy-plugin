@@ -18,14 +18,18 @@ test('forecast points leg by leg: an edit of the last waypoint leaves the other 
     assert.ok(same >= a.length * 0.6, `${same} of ${b.length} points need no new download`);
 });
 
-test('area grid: finest of 0.5 / 1 / 2 / 3° within 300 points; across the date line; inside test', () => {
+test('area grid: finest of 0.5 … 6° within 400 points; across the date line; inside test', () => {
     const g = areaGrid({ n: 15, s: 10, w: -40, e: -35 })!;
     assert.equal(g.step, 0.5);
     assert.equal(g.points.length, 11 * 11);
     assert.equal(areaGrid({ n: 20, s: 10, w: -40, e: -30 })!.step, 1);
     const big = areaGrid({ n: 40, s: 0, w: -60, e: -20 })!;
     assert.equal(big.step, 3);
-    assert.ok(big.points.length <= 300);
+    assert.ok(big.points.length <= 400);
+    // owner, 2026-11-23: bigger than 50° × 50° (a whole North Atlantic crossing)
+    const ocean = areaGrid({ n: 60, s: 0, w: -90, e: 0 })!;
+    assert.ok(ocean && ocean.step >= 4 && ocean.points.length <= 400, `ocean box: ${ocean?.step}° ${ocean?.points.length}`);
+    assert.equal(areaGrid({ n: 80, s: -80, w: -180, e: 179 }), null, 'too big even at 6°');
     assert.equal(areaGrid({ n: 10, s: 20, w: 0, e: 10 }), null, 'north must be north of south');
     const dl = areaGrid({ n: 10, s: 0, w: 170, e: -170 })!;
     assert.ok(dl.points.some(p => p.lon === 180 || p.lon === -180) && dl.points.some(p => p.lon === -170) && dl.points.some(p => p.lon === 170));

@@ -4,7 +4,20 @@
 // positions are approximate (sea-ports list). Tested in test/seanet.test.ts.
 
 import { legGeometry, type LatLon } from './geo';
-import { PORTS_RAW, SEANET_B64, SEANET_NODES } from './seaNetData';
+import { PORTS_RAW } from './seaNetData';
+
+/** The packed sea-lane network (data/seanet/seanet.json): not in the plugin since 0.29.0 (Windy's upload size limit),
+ *  downloaded on first use of Distances and kept in the browser (src/windy/seaNetLoad.ts) */
+export interface SeaNetData {
+    nodes: number;
+    b64: string;
+}
+let netData: SeaNetData | null = null;
+export function setSeaNetData(d: SeaNetData | null): void {
+    netData = d;
+    net = null;
+}
+export const seaNetReady = (): boolean => netData != null;
 
 export interface Port {
     code: string;
@@ -65,7 +78,8 @@ interface Net {
 let net: Net | null = null;
 
 function decode(): Net {
-    const bin = atob(SEANET_B64);
+    if (!netData) throw new Error('sea-lane network not loaded');
+    const bin = atob(netData.b64);
     let p = 0;
     const vu = () => {
         let x = 0;
@@ -81,7 +95,7 @@ function decode(): Net {
         const u = vu();
         return u % 2 ? -(u + 1) / 2 : u / 2;
     };
-    const n = SEANET_NODES;
+    const n = netData.nodes;
     const lat = new Float32Array(n);
     const lon = new Float32Array(n);
     let x = 0;
@@ -137,6 +151,7 @@ function getNet(): Net {
 
 /** Nearest network node to a position (searching outwards in 2° cells), with its distance in nm */
 export function nearestNode(p: LatLon): { id: number; nm: number } | null {
+    if (!netData) return null;
     const g = getNet();
     const r0 = Math.floor((p.lat + 90) / 2);
     const c0 = Math.floor((((p.lon + 180) % 360) + 360) % 360 / 2);
@@ -175,6 +190,7 @@ export interface SeaRoute {
 
 /** Shortest way along the shipping-lane network (A*), or null if none */
 export function seaRoute(a: LatLon, b: LatLon): SeaRoute | null {
+    if (!netData) return null;
     const g = getNet();
     const s = nearestNode(a);
     const t = nearestNode(b);

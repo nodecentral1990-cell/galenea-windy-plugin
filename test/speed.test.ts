@@ -108,3 +108,56 @@ test('ETA mode holds the ETA against weather and current, needing more speed', (
     near(sim.plan.eta as number, r.eta as number, 5 * 60e3, 'ETA kept');
     assert.ok(sim.legs[0].sicw > (base.requiredSog as number) + 1, 'needs more speed in calm water');
 });
+
+test('RPM advice: never barred (e.g. aux blower), never above max / below min, with the reason (owner 2026-11-23)', async () => {
+    const { adviseRpm, rpmAdviceText, rpmAllowed } = await import('../src/lib/speed');
+    const v = {
+        ...emptyVessel(),
+        speedTable: [
+            { rpm: 40, sicw: 9, fuel: 20 },
+            { rpm: 60, sicw: 12, fuel: 35 },
+            { rpm: 80, sicw: 15, fuel: 60 },
+        ],
+        barredRpm: [{ from: 50, to: 55, why: 'Auxiliary blower cut-in / cut-out (scavenge air pressure)' }],
+        minRpm: 42,
+        maxRpm: 75,
+    } as Vessel;
+    assert.deepEqual(adviseRpm(v, 60), { rpm: 60 }, 'allowed: as wanted');
+    const b = adviseRpm(v, 54)!;
+    assert.equal(b.issue, 'barred');
+    assert.equal(b.rpm, 56, 'nearest allowed outside 50–55 (54 is nearer the top)');
+    assert.equal(b.alt, 49, 'the other side offered too');
+    const b2 = adviseRpm(v, 51)!;
+    assert.equal(b2.rpm, 49);
+    assert.match(rpmAdviceText(v, 54, 'planned'), /54 RPM planned is inside the barred range 50–55 \(Auxiliary blower.*\): run at 56 RPM.*a little faster, or 49 RPM.*a little slower/);
+    const hi = adviseRpm(v, 78)!;
+    assert.equal(hi.issue, 'aboveMax');
+    assert.equal(hi.rpm, 75);
+    assert.match(rpmAdviceText(v, 78), /above your max RPM 75: run at 75 RPM.*ETA later/);
+    assert.equal(adviseRpm(v, 38)!.issue, 'belowMin');
+    assert.equal(adviseRpm(v, 38)!.rpm, 42);
+    assert.equal(rpmAllowed(v, 52), false);
+    assert.equal(rpmAllowed(v, 76), false);
+    assert.equal(rpmAllowed(v, 70), true);
+    // max inside a barred range: the next allowed below it
+    const v2 = { ...v, barredRpm: [{ from: 73, to: 76, why: 'critical' }] } as Vessel;
+    assert.equal(adviseRpm(v2, 79)!.rpm, 72);
+});
+
+test('safe plan speed choices keep within the min / max RPM and outside barred ranges', async () => {
+    const { speedOptions } = await import('../src/lib/speedPlan');
+    const v = {
+        ...emptyVessel(),
+        speedTable: [
+            { rpm: 40, sicw: 9, fuel: 20 },
+            { rpm: 80, sicw: 15, fuel: 60 },
+        ],
+        barredRpm: [{ from: 50, to: 55, why: 'blower' }],
+        minRpm: 45,
+        maxRpm: 70,
+    } as Vessel;
+    const { options } = speedOptions(v);
+    assert.ok(options.length > 3);
+    assert.ok(options.every(o => o.rpm == null || (o.rpm >= 45 && o.rpm <= 70 && !(o.rpm >= 50 && o.rpm <= 55))), options.map(o => o.rpm).join(','));
+    assert.ok(options.some(o => o.rpm === 70) && options.some(o => o.rpm === 45), 'max and min RPM are choices');
+});

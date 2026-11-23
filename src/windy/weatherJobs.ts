@@ -253,7 +253,7 @@ export async function refreshArea(opts: { fresh?: boolean; quiet?: boolean } = {
     const a = get(wxAuto);
     const g = a.area ? areaGrid(a.area) : null;
     if (!a.area || !g) {
-        areaStatus.set('Check the area: north must be north of south, latitudes −90…90, longitudes −180…180, at most about 50° × 50°.');
+        areaStatus.set('Check the area: north must be north of south, latitudes −90…90, longitudes −180…180, at most about 110° × 110° (6° apart, 400 points).');
         return;
     }
     if (get(areaBusy)) return;

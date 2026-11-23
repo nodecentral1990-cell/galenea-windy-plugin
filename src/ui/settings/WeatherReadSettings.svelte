@@ -19,18 +19,25 @@
     <input type="checkbox" bind:checked={$freeForecast} />
     <span>Fill missing times from <b>Open-Meteo</b> (free): past times, and days beyond your Windy plan</span>
 </label>
+<label class="gs-check" title="Beyond the end of the forecast (about 10–15 days), the usual weather of that month from a climate table (ERA5, 2006–2025, 2° squares): mean wind and waves, with the chance of a gale and of high seas. Used in the weather table (rows marked C) and for the ETA; never a warning, never a forecast.">
+    <input type="checkbox" bind:checked={$climateOn} />
+    <span>Beyond the forecast: <b>climate averages</b> (usual weather of the month; rows marked <b>C</b>; also for the ETA)</span>
+</label>
+{#if $climateStatus}<div class="g-status">{$climateStatus}</div>{/if}
 <div class="pp-note g-hl">
-    Rows marked <b>E</b> = earlier Windy run kept here; <b>OM</b> = Open-Meteo.
+    Rows marked <b>E</b> = earlier Windy run kept here; <b>OM</b> = Open-Meteo; <b>C</b> = climate average, not a forecast.
     <Hint title="Where the weather comes from"
         ><p>
             The plugin uses Windy's ECMWF and ECMWF-WAM first. Rows from other sources are marked in the weather table: <b>E</b> = an earlier Windy run kept in this browser (past times), <b>OM</b> = Open-Meteo (ECMWF
-            IFS 0.25° for wind and pressure, GFS Wave 0.25° for waves; CC BY 4.0).
+            IFS 0.25° for wind and pressure, GFS Wave 0.25° for waves; CC BY 4.0), <b>C</b> = climate average beyond the forecast: the usual weather of that month
+            from ERA5 (ECMWF / Copernicus reanalysis, 2006–2025, 2° squares; "contains modified Copernicus Climate Change Service information"). C rows give the usual wind and waves and the chance of a gale and of seas over 4 / 6 m; they never raise a warning.
         </p></Hint
     >
 </div>
 
 <script lang="ts">
     import Hint from '../base/Hint.svelte';
-    import { freeForecast } from '../../state';
+    import { climateOn, freeForecast } from '../../state';
+    import { climateStatus } from '../../windy/climateJob';
     import { autoLayers, wxAuto } from '../../windy/weatherJobs';
 </script>

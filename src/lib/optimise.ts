@@ -14,7 +14,7 @@
 
 import { legGeometry, norm180, norm360, rhumbDirect, wrapLon, type LatLon, type LegType } from './geo';
 import type { SpeedRow, Vessel } from './model';
-import { fromTable, lossInputs, sogWithCurrent, weatherLossKn, type Current, type LossInputs } from './speed';
+import { fromTable, lossInputs, rpmAllowed, sogWithCurrent, weatherLossKn, type Current, type LossInputs } from './speed';
 import { checkLimits, type Level, type Thresholds, type WxPoint } from './weather';
 
 const HOUR = 3600_000;
@@ -406,7 +406,14 @@ export function optimise(start: LatLon, end: LatLon, etd: number, vessel: Vessel
     const t0 = Date.now();
     const notes: string[] = [];
     const grid = buildGrid(start, end, opts, env.isWater);
-    const speeds = (opts.speeds && opts.speeds.length ? [...opts.speeds] : defaultSpeeds(vessel.speedTable, opts.plannedSpeed)).filter(v => v > 0).sort((a, b) => a - b);
+    const speeds0 = (opts.speeds && opts.speeds.length ? [...opts.speeds] : defaultSpeeds(vessel.speedTable, opts.plannedSpeed)).filter(v => v > 0).sort((a, b) => a - b);
+    // never a speed whose RPM is barred or outside the min / max RPM (owner, 2026-11-23)
+    const allowedSpeeds = speeds0.filter(v => {
+        const r = fromTable(vessel.speedTable, v)?.rpm;
+        return r == null || rpmAllowed(vessel, Math.round(r));
+    });
+    const speeds = allowedSpeeds.length ? allowedSpeeds : speeds0;
+    if (allowedSpeeds.length < speeds0.length) notes.push(allowedSpeeds.length ? `${speeds0.length - allowedSpeeds.length} speed(s) left out: their RPM is barred or outside your min / max RPM.` : 'Every speed tried needs a barred RPM or one outside your min / max RPM: check Settings → Speed, RPM and fuel.');
     const unit = fuelPerDay(vessel.speedTable, speeds[0]).unit;
     if (unit === 'relative') notes.push('No RPM/speed/fuel table (⚙ Settings): fuel is in relative units (speed³), only good for comparing routes.');
     if (!lossInputs(vessel)) notes.push('Weather speed loss needs LBP, breadth and drafts (⚙ Settings → Ship particulars): the weather here only affects the limits, not the speed.');

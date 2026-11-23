@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { distanceRow, findPorts, nearestNode, ports, seaRoute, unwrapPath } from '../src/lib/seaNet';
+import { readFileSync } from 'node:fs';
+import { distanceRow, findPorts, nearestNode, ports, seaRoute, setSeaNetData, unwrapPath } from '../src/lib/seaNet';
+setSeaNetData(JSON.parse(readFileSync(new URL('../data/seanet/seanet.json', import.meta.url), 'utf8')));
 
 const port = (code: string) => {
     const p = ports().find(x => x.code === code);

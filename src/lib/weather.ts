@@ -3,6 +3,7 @@
 // Pure logic: the calls to Windy live in ../windy/forecast.ts.
 
 import { extraAt, type Extra } from './marineExtra';
+import { climateAt, climateWords, type ClimStats } from './climate';
 import { checkWaveSystem, encounterAngle, encounterPeriod, estimateRollPeriod, type ResonanceHit, type ResonanceSettings, type WaveSystem } from './circ1228';
 import { defaultCold, ICING_RATE, icingRank, sprayIcing, type ColdLimits } from './icing';
 import { norm180, norm360 } from './geo';
@@ -64,7 +65,7 @@ export interface WxSeries {
 
 /** One stretch of a point forecast and where it comes from (2026-11-02: past and longer weather) */
 export interface SeriesPart {
-    kind: 'windy' | 'kept' | 'openmeteo';
+    kind: 'windy' | 'kept' | 'openmeteo' | 'climate';
     /** Which data: 'air' (wind, pressure…) or 'waves' */
     group: 'air' | 'waves';
     from: number;
@@ -99,11 +100,13 @@ export interface WxPoint {
     /** True when the sea is real sea data (height, period, direction): Windy's wind-wave layer, or Open-Meteo marine
      *  (since 2026-11-19); false / missing = worked out from SWH and the swells. `seaSrc` says which. */
     seaWindy?: boolean;
-    seaSrc?: 'windy' | 'openmeteo';
+    seaSrc?: 'windy' | 'openmeteo' | 'climate';
     /** Wave power (energy flux), kW per metre of wave front */
     powerKw?: number | null;
     /** The waves are from another forecast point this far away (nm), the nearest had none */
     wavesFromNm?: number;
+    /** Climate average, not a forecast (beyond the forecast; owner 2026-11-23): the figures behind it */
+    clim?: ClimStats;
     /** True when the power was worked out here (0.49 × SWH² × period) rather than sent by Windy */
     powerCalc?: boolean;
     /** Air temperature, °C */
@@ -623,6 +626,9 @@ export function buildRows(
         const s = nearestSeries(series, pos);
         let wx = s ? sampleSeries(s, t) : null;
         if (wx) wx = withNeighbourWaves(wx, series, s, pos, t);
+        // beyond the forecast: the usual weather of the month from the climate table (marked C, never a firm warning)
+        const clim = !wx ? climateAt(pos.lat, pos.lon, t) : null;
+        if (clim) wx = clim;
         if (wx && sweep?.has(t)) {
             // Windy's own map readings take over, but a value it could not read never wipes the downloaded one
             const sw = Object.fromEntries(Object.entries(sweep.get(t) ?? {}).filter(([, v]) => v != null)) as Partial<WxPoint>;
@@ -639,8 +645,8 @@ export function buildRows(
         // Windy's own map reading (when done) takes over from the downloaded sea
         if (wx && wx.seaSrc !== 'windy') wx = withWindySea(wx, sweep, t);
         const beyond = !!s && !wx;
-        const limits = wx ? checkLimits(wx, pos.course, th) : [];
-        const resonance = wx
+        const limits = wx && !clim ? checkLimits(wx, pos.course, th) : [];
+        const resonance = wx && !clim
             ? waveSystems(wx).flatMap(ws =>
                   checkWaveSystem(ws, { headingDeg: pos.course, speedKn, lbp: vessel.lbp, rollPeriod: tr.value }, th.resonance),
               )
@@ -663,7 +669,7 @@ export function buildRows(
             sicw: stopped ? null : tp && !tp.stopped && tp.sicw > 0 ? tp.sicw : leg ? leg.calmSpeed : null,
             lossKn: stopped ? null : tp && !tp.stopped ? tp.lossKn : leg ? leg.allowance : null,
             curAlong: stopped ? null : tp && !tp.stopped ? tp.curAlong : 0,
-            src: wx ? otherSourceAt(s, t) : null,
+            src: clim?.clim ? { kind: 'climate' as const, group: 'air' as const, from: t, to: t, label: climateWords(clim.clim) } : wx ? otherSourceAt(s, t) : null,
         };
     });
 }
@@ -726,10 +732,12 @@ function nearestSeries(series: WxSeries[], pos: { lat: number; lon: number }): W
 }
 
 /** Weather at a time and place from the fetched forecast points (null if none close enough or beyond the forecast). */
-export function weatherAt(series: WxSeries[], pos: { lat: number; lon: number }, t: number): WxPoint | null {
+export function weatherAt(series: WxSeries[], pos: { lat: number; lon: number }, t: number, opts: { climate?: boolean } = {}): WxPoint | null {
     const s = nearestSeries(series, pos);
     const wx = s ? sampleSeries(s, t) : null;
-    return wx ? withNeighbourWaves(wx, series, s, pos, t) : null;
+    if (wx) return withNeighbourWaves(wx, series, s, pos, t);
+    // beyond the forecast, only where asked (the ETA): the usual weather of the month (owner, 2026-11-23)
+    return opts.climate ? climateAt(pos.lat, pos.lon, t) : null;
 }
 
 /**
@@ -766,17 +774,22 @@ export interface WxArea {
 /** Width of an area in degrees of longitude (across the date line too) */
 export const areaWidth = (a: WxArea): number => (a.e >= a.w ? a.e - a.w : a.e + 360 - a.w);
 
+/** Grid spacings for the area box, finest first (owner, 2026-11-23: bigger areas than 50° × 50° → up to 6° apart) */
+export const AREA_STEPS = [0.5, 1, 2, 3, 4, 5, 6];
+/** Most forecast points in one area (each is one download, about 0.3 s each with 6 at a time) */
+export const AREA_MAX_POINTS = 400;
+
 /**
- * Forecast points on a grid over the area: 0.5°, 1°, 2° or 3° apart, the finest that keeps to `maxPoints`
- * (each point is one forecast download). Null when the area is not valid.
+ * Forecast points on a grid over the area: 0.5° … 6° apart, the finest that keeps to `maxPoints`
+ * (each point is one forecast download). Null when the area is not valid or too big even at 6°.
  */
-export function areaGrid(a: WxArea, maxPoints = 300): { step: number; points: { lat: number; lon: number }[] } | null {
+export function areaGrid(a: WxArea, maxPoints = AREA_MAX_POINTS): { step: number; points: { lat: number; lon: number }[] } | null {
     if (![a.n, a.s, a.w, a.e].every(v => isFinite(v)) || a.n <= a.s || a.n > 90 || a.s < -90 || Math.abs(a.w) > 180 || Math.abs(a.e) > 180) return null;
     const width = areaWidth(a);
     if (width <= 0 || width > 360) return null;
     const height = a.n - a.s;
     const count = (st: number) => (Math.floor(height / st) + 1) * (Math.floor(width / st) + 1);
-    const step = [0.5, 1, 2, 3].find(st => count(st) <= maxPoints);
+    const step = AREA_STEPS.find(st => count(st) <= maxPoints);
     if (step == null) return null;
     const points: { lat: number; lon: number }[] = [];
     for (let la = a.s; la <= a.n + 1e-9; la += step) {

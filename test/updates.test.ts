@@ -16,5 +16,5 @@ test('version numbers compare as numbers (0.10 is newer than 0.9)', () => {
 test('release notes: the current version has notes, newest first; notes after an update', () => {
     assert.equal(RELEASE_NOTES[0].version, config.version, 'add release notes for every version');
     for (let i = 1; i < RELEASE_NOTES.length; i++) assert.equal(compareVersions(RELEASE_NOTES[i - 1].version, RELEASE_NOTES[i].version), 1);
-    assert.deepEqual(notesBetween('0.12.0', '0.13.0').map(n => n.version), ['0.13.0', '0.12.1']);
+    assert.deepEqual(notesBetween('0.24.0', '0.25.0').map(n => n.version), ['0.25.0', '0.24.2', '0.24.1']);
 });

@@ -172,7 +172,7 @@
     import DistancesPanel from './ui/DistancesPanel.svelte';
     import { installTheme } from './ui/theme';
     import { RouteLayer } from './windy/mapLayer';
-    import {
+    import { glyphStyle,
         addMode,
         deleteWaypoints,
         insertWaypoint,
@@ -231,6 +231,13 @@
     import { startChartLayers, stopChartLayers } from './windy/chartLayer';
     import { startPlaces, stopPlaces } from './windy/placesLayer';
     import { startSeaAreas, stopSeaAreas } from './windy/seaAreasLayer';
+    import { startClimate, stopClimate } from './windy/climateJob';
+    import { dragMove, onUndoKey } from './routeHistory';
+    const undoKey = (e: KeyboardEvent) => {
+        const before = e.defaultPrevented;
+        onUndoKey(e);
+        if (!before && e.defaultPrevented) logEvent('route', `${e.key.toLowerCase() === 'y' || e.shiftKey ? 'Redo' : 'Undo'} (keys)`);
+    };
     import { setRingCenter, startRangeRings, stopRangeRings } from './windy/rangeRingsLayer';
     import CursorBar from './ui/CursorBar.svelte';
     import { cursorBar } from './state';
@@ -472,14 +479,18 @@
         safe('Nautical charts', startChartLayers);
         safe('Ports and canals', startPlaces);
         safe('Sea areas and limits', startSeaAreas);
+        safe('Climate beyond the forecast', startClimate);
         safe('Range rings', startRangeRings);
         safe('Place marker', showMarker);
         safe('Weather area on the map', startAreaLayer);
         safe('Weather by itself', startAutoWeather);
         safe('Jumps inside the panel', () => setNavHandler(navTo));
         safe('Map tool note', startMapToolNote);
+        safe('Undo / redo keys', () => window.addEventListener('keydown', undoKey, true));
         layer = new RouteLayer({
-            onMove(uid, lat, lon) {
+            onMove(uid, lat, lon, final) {
+                // the whole drag is one undo step (Ctrl+Z, owner 2026-11-23)
+                if (!final) dragMove(false);
                 updateRoute(r => {
                     const w = r.waypoints.find(x => x.uid === uid);
                     if (w) {
@@ -487,6 +498,7 @@
                         w.lon = lon;
                     }
                 });
+                if (final) dragMove(true);
             },
             onInsert(beforeIndex, lat, lon) {
                 insertWaypoint(beforeIndex, lat, lon);
@@ -555,11 +567,21 @@
     let stopSafeTop: (() => void) | null = null;
     onDestroy(() => stopSafeTop?.());
     onDestroy(() => {
+        try {
+            window.removeEventListener('keydown', undoKey, true);
+        } catch {
+            /* gone */
+        }
         stopLogging();
         stopWaveChart();
         stopRollChart();
         stopChartLayers();
         stopPlaces();
+        try {
+            stopClimate();
+        } catch {
+            /* gone */
+        }
         try {
             stopSeaAreas();
         } catch {
@@ -623,7 +645,7 @@
               }
             : () => null;
     $: layer &&
-        layer.renderShips(ships, now, p => `${fmtTime(p.time)} UTC`, glyph, $shipWeather, $shipStyle, $flagColors);
+        layer.renderShips(ships, now, p => `${fmtTime(p.time)} UTC`, glyph, $shipWeather, $shipStyle, $flagColors, $glyphStyle);
 
     // Ship info window and "keep the ship centred"
     $: wxOk = $wxSeries.length > 0 && $wxPlanKey === $planKey;

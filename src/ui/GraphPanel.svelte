@@ -130,7 +130,7 @@
     import { buildRows, forecastInfo, type WxRow } from '../lib/weather';
     import { motionAt } from '../lib/motionEstimate';
     import { fmtTime } from '../lib/format';
-    import { plan, planKey, route, thresholds, timelineTs, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
+    import { climateTick, plan, planKey, route, thresholds, timelineTs, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
     import { goToNow } from '../windy/nowTime';
     import { logEvent } from '../lib/activityLog';
 
@@ -164,7 +164,7 @@
     $: stepH = hours <= 96 ? 1 : 3;
     $: rows =
         ($phone || (st.open && st.mode !== 'min')) && $plan.etd != null && $plan.eta != null && $route.waypoints.length > 1
-            ? buildRows($route, $plan, $vessel, $thresholds, stepH, wxOk ? $wxSeries : [], wxOk ? $wxSweepValid : undefined)
+            ? ($climateTick >= 0 ? buildRows($route, $plan, $vessel, $thresholds, stepH, wxOk ? $wxSeries : [], wxOk ? $wxSweepValid : undefined) : ([] as WxRow[]))
             : ([] as WxRow[]);
     $: times = rows.map(r => r.time);
     $: runInfo = wxOk ? forecastInfo($wxSeries) : null;

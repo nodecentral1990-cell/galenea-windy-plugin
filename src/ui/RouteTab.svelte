@@ -88,9 +88,13 @@
             <p>Speeds are calm-water speeds less your allowance (or the weather estimate). Currents are added only if switched on. Both: the gear beside this (Speed, RPM and fuel).</p>
             <p>Click an <b>ETA</b> to fix the time at that waypoint (📌): the speeds before it are scaled to arrive then (→ in the SiCW column), and the later ETAs and weather follow.</p>
             <p>Right-click a waypoint on the map for options.</p>
+            <p><b>Undo / redo</b>: Ctrl+Z (⌘Z on a Mac) takes back the last change of the route (a waypoint dragged, added or deleted, a speed, a time…), as many times as you like; Ctrl+Y (⌘⇧Z) puts it back again. Not kept after a reload.</p>
         </Hint>
         <Gear host="wps" chips={[{ id: 'speed', part: 'table', label: 'RPM / speed / fuel table' }, { id: 'speed', part: 'loss', label: 'Weather loss and currents' }, { id: 'route', label: 'Route editing' }, { id: 'ship', part: 'particulars', label: 'Ship (propeller pitch)' }]} />
         <div class="g-card__actions">
+            <!-- undo / redo of route changes, no limit (owner, 2026-11-23) -->
+            <button class="pp-btn pp-btn--ghost small rt-undo" disabled={!$historyCount.undo} on:click={() => { if (undo()) logEvent('route', 'Undo (button)'); }} title={`Undo the last change of the route (Ctrl+Z / ⌘Z) · ${$historyCount.undo} step(s) back`}>↶ Undo</button>
+            <button class="pp-btn pp-btn--ghost small rt-redo" disabled={!$historyCount.redo} on:click={() => { if (redo()) logEvent('route', 'Redo (button)'); }} title={`Redo (Ctrl+Y / ⌘⇧Z) · ${$historyCount.redo} step(s) forward`}>↷ Redo</button>
             <button class="pp-btn pp-btn--ghost small" disabled={!$route.waypoints.length} on:click={() => (fullTable = true)} title="Show the whole table over the map"><Icon name="expand" size={14} /> Full-size table</button>
         </div>
     </div>
@@ -136,6 +140,8 @@
     import { addMode, plan, route, selectedUids, sim, thresholds, updateRoute, vessel } from '../state';
     import { downloadFile } from './download';
     import WaypointTable from './WaypointTable.svelte';
+    import { logEvent } from '../lib/activityLog';
+    import { historyCount, redo, undo } from '../routeHistory';
     import DateTimeField from './DateTimeField.svelte';
     import VoyagePanel from './VoyagePanel.svelte';
 

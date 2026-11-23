@@ -59,6 +59,90 @@ export function barredRange(vessel: Vessel, rpm: number | null | undefined): Bar
     return null;
 }
 
+export type RpmIssue = 'barred' | 'aboveMax' | 'belowMin';
+export interface RpmAdvice {
+    /** The RPM the plugin advises (the one wanted when nothing is wrong) */
+    rpm: number;
+    /** What is wrong with the RPM wanted (none when it can be run) */
+    issue?: RpmIssue;
+    /** The barred range it falls in */
+    range?: BarredRpm;
+    /** The other choice (the allowed RPM on the other side of a barred range), if any */
+    alt?: number;
+}
+
+/** Lowest / highest RPM the ship will run at (null = no limit set) */
+export function rpmLimits(vessel: Vessel): { min: number | null; max: number | null } {
+    const ok = (v: number | null | undefined) => (v != null && isFinite(v) && v > 0 ? v : null);
+    let min = ok(vessel.minRpm);
+    let max = ok(vessel.maxRpm);
+    if (min != null && max != null && min > max) [min, max] = [max, min];
+    return { min, max };
+}
+
+/** True when the ship may run at this RPM: not barred, not below the min, not above the max */
+export function rpmAllowed(vessel: Vessel, rpm: number): boolean {
+    const { min, max } = rpmLimits(vessel);
+    return !barredRange(vessel, rpm) && (min == null || rpm >= min - 1e-9) && (max == null || rpm <= max + 1e-9);
+}
+
+/**
+ * The RPM to advise when `wanted` is needed (owner, 2026-11-23: never advise a barred RPM, e.g. the auxiliary blower
+ * cut-in / cut-out, nor above the max / below the min RPM; say why and give a slightly higher or lower RPM instead).
+ * Above the max → the max; below the min → the min; in a barred range → the nearest whole RPM outside it that is allowed
+ * (the other side as `alt`; on a tie the higher one, which keeps the ETA).
+ */
+export function adviseRpm(vessel: Vessel, wanted: number | null | undefined): RpmAdvice | null {
+    if (wanted == null || !isFinite(wanted)) return null;
+    const { min, max } = rpmLimits(vessel);
+    if (max != null && wanted > max + 0.5) {
+        const r = nearestAllowed(vessel, max, -1);
+        return r != null ? { rpm: r, issue: 'aboveMax' } : null;
+    }
+    if (min != null && wanted < min - 0.5) {
+        const r = nearestAllowed(vessel, min, +1);
+        return r != null ? { rpm: r, issue: 'belowMin' } : null;
+    }
+    const range = barredRange(vessel, wanted);
+    if (!range) return { rpm: wanted };
+    const lo = Math.min(range.from as number, range.to as number);
+    const hi = Math.max(range.from as number, range.to as number);
+    const up = nearestAllowed(vessel, Math.floor(hi) + 1, +1);
+    const down = nearestAllowed(vessel, Math.ceil(lo) - 1, -1);
+    if (up == null && down == null) return null;
+    const pickUp = down == null || (up != null && up - wanted <= wanted - down);
+    return { rpm: (pickUp ? up : down) as number, issue: 'barred', range, alt: (pickUp ? down : up) ?? undefined };
+}
+
+/** First allowed whole RPM from `start` going `dir` (+1 up, −1 down), within the min / max; null if none */
+function nearestAllowed(vessel: Vessel, start: number, dir: 1 | -1): number | null {
+    const { min, max } = rpmLimits(vessel);
+    let r = Math.round(start);
+    for (let i = 0; i < 400; i++, r += dir) {
+        if ((min != null && r < min - 1e-9) || (max != null && r > max + 1e-9) || r <= 0) return null;
+        if (!barredRange(vessel, r)) return r;
+    }
+    return null;
+}
+
+/** The advice in words for one RPM figure (empty when the RPM wanted can be run) */
+export function rpmAdviceText(vessel: Vessel, wanted: number | null | undefined, what = 'needed'): string {
+    const a = adviseRpm(vessel, wanted);
+    if (!a || !a.issue || wanted == null) return '';
+    const kn = (r: number) => {
+        const v = sicwForRpm(vessel.speedTable, r);
+        return v != null ? ` (about ${v.toFixed(1)} kn in calm water)` : '';
+    };
+    const w = Math.round(wanted);
+    if (a.issue === 'aboveMax') return `${w} RPM ${what} is above your max RPM ${rpmLimits(vessel).max}: run at ${a.rpm} RPM${kn(a.rpm)}, so the speed will be lower and the ETA later than planned.`;
+    if (a.issue === 'belowMin') return `${w} RPM ${what} is below your min RPM ${rpmLimits(vessel).min}: run at ${a.rpm} RPM${kn(a.rpm)} (a little faster), or plan a stop / slow steaming break instead.`;
+    const r = a.range as BarredRpm;
+    const lo = Math.min(r.from as number, r.to as number);
+    const hi = Math.max(r.from as number, r.to as number);
+    const side = (x: number) => (x > wanted ? 'a little faster' : 'a little slower');
+    return `${w} RPM ${what} is inside the barred range ${lo}–${hi}${r.why ? ` (${r.why})` : ''}: run at ${a.rpm} RPM${kn(a.rpm)}, ${side(a.rpm)}${a.alt != null ? `, or ${a.alt} RPM${kn(a.alt)}, ${side(a.alt)}` : ''}.`;
+}
+
 /** Calm-water speed for an RPM, linear between the owner's table rows (null without RPM in the table). */
 export function sicwForRpm(table: SpeedRow[] | undefined, rpm: number): number | null {
     const pts = (table ?? []).filter(r => r.rpm != null && r.sicw != null && isFinite(r.rpm) && isFinite(r.sicw)).sort((a, b) => (a.rpm as number) - (b.rpm as number));
@@ -375,6 +459,14 @@ export function simulate(route: Route, base: PlanCalc, vessel: Vessel, env: Env,
     const fuels = out.map(l => l.fuelT);
     const totalFuelT = fuels.every(f => f != null) && fuels.length ? fuels.reduce((a, b) => a + (b as number), 0) : null;
     if (out.some(l => l.outsideTable || l.holdOutsideTable)) notes.push('Some speeds are outside your RPM/speed table: RPM and fuel are extrapolated.');
+    // RPM the ship cannot run at (barred range, above the max, below the min): the RPM advised instead (owner, 2026-11-23)
+    for (const l of out) {
+        const wp = `WP${l.legIdx + 1}→${l.legIdx + 2}`;
+        const a = rpmAdviceText(vessel, l.rpm, 'planned');
+        if (a) notes.push(`${wp}: ${a}`);
+        const h = l.rpmToHold != null && Math.round(l.rpmToHold) !== Math.round(l.rpm ?? -1) ? rpmAdviceText(vessel, l.rpmToHold, `needed to hold the ${legs[l.legIdx]?.targetSog != null ? 'ETA' : 'planned speed'} in this weather`) : '';
+        if (h) notes.push(`${wp}: ${h}`);
+    }
     if (method === 'kwon' && li) notes.push('Weather loss: Kwon estimate. Its coefficients have not yet been checked against the original paper: treat as rough.');
     const plan: PlanCalc = {
         ...base,

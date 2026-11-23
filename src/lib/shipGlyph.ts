@@ -198,3 +198,104 @@ export function arrowPoints(cx: number, cy: number, bearing: number, r0: number,
             : [[base, -hw], [len, 0], [base, hw]];
     return local.map(([r, s]) => at(cx, cy, bearing, r, s));
 }
+
+// ---------- "One ring" (owner's choice, 2026-11-23: option 1 of windy/screens/ship-symbol-options.pdf) ----------
+// One thin ring round the ship; each wave a short arrow head on the ring pointing in from where it comes; height / period
+// in a small box outside the ring, always the right way up (boxes step aside when waves come from the same side); the
+// wind barb fixed to the ship inside the ring. About 130 px across instead of 250; no stray arrow.
+
+const RING_R = 31;
+/** rough width of bold sans-serif text (px) */
+const textW = (s: string, font: number) => [...s].reduce((n, ch) => n + (/[./ :°]/.test(ch) ? 0.3 : /[A-Z]/.test(ch) ? 0.7 : /[a-z]/.test(ch) ? 0.56 : 0.58), 0) * font;
+const angDiff = (a: number, b: number) => Math.abs(((a - b + 540) % 360) - 180);
+
+/** Sideways shifts so that waves from nearly the same direction sit side by side (`need` px apart at radius `rs`) */
+export function spreadShifts(dirs: number[], need: number, rs: number): number[] {
+    const order = dirs.map((dir, i) => ({ i, dir: ((dir % 360) + 360) % 360 })).sort((a, b) => a.dir - b.dir);
+    const shift = dirs.map(() => 0);
+    if (!order.length) return shift;
+    let group = [order[0]];
+    const flush = () => {
+        const o = [0];
+        for (let j = 1; j < group.length; j++) {
+            const natural = 2 * rs * Math.sin((angDiff(group[j].dir, group[j - 1].dir) * Math.PI) / 360);
+            o.push(o[j - 1] + Math.max(0, need - natural));
+        }
+        const mean = o.reduce((a, b) => a + b, 0) / o.length;
+        group.forEach((g, j) => (shift[g.i] = o[j] - mean));
+    };
+    for (let j = 1; j < order.length; j++) {
+        if (order[j].dir - order[j - 1].dir < 40) group.push(order[j]);
+        else {
+            flush();
+            group = [order[j]];
+        }
+    }
+    flush();
+    // the last and first may be close across north
+    return shift;
+}
+
+/** Label boxes round the ring, each on the side its wave comes from, moved aside / out when it would cover another */
+function ringLabels(c: number, size: number, items: { dir: number; text: string; fill: string }[], r: number, font = 10): string {
+    const placed: { x: number; y: number; w: number; h: number }[] = [];
+    const hit = (a: (typeof placed)[0], b: (typeof placed)[0]) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 + 2 && Math.abs(a.y - b.y) < (a.h + b.h) / 2 + 2;
+    let lines = '';
+    let boxes = '';
+    for (const it of items) {
+        const w = textW(it.text, font) + 9;
+        const h = font + 4;
+        let best: { box: (typeof placed)[0]; moved: boolean } | null = null;
+        search: for (const dr of [0, 13, 26, 39])
+            for (const da of [0, -9, 9, -18, 18, -27, 27]) {
+                const d = it.dir + da;
+                const a = (d * Math.PI) / 180;
+                const rr = r + dr + (Math.abs(Math.sin(a)) * w) / 2 + (Math.abs(Math.cos(a)) * h) / 2;
+                const [x, y] = at(c, c, d, rr);
+                const box = { x, y, w, h };
+                if (x - w / 2 < 2 || x + w / 2 > size - 2 || y - h / 2 < 2 || y + h / 2 > size - 2) continue;
+                if (!placed.some(p => hit(p, box))) {
+                    best = { box, moved: !!(dr || da) };
+                    break search;
+                }
+            }
+        if (!best) {
+            const [x, y] = at(c, c, it.dir, r + 10);
+            best = { box: { x, y, w, h }, moved: false };
+        }
+        placed.push(best.box);
+        if (best.moved) {
+            const [ax, ay] = at(c, c, it.dir, r - 1);
+            lines += `<line x1="${f(ax)}" y1="${f(ay)}" x2="${f(best.box.x)}" y2="${f(best.box.y)}" stroke="${it.fill}" stroke-width="1.2"/>`;
+        }
+        const b = best.box;
+        boxes +=
+            `<rect x="${f(b.x - b.w / 2)}" y="${f(b.y - b.h / 2)}" width="${f(b.w)}" height="${f(b.h)}" rx="3.5" fill="${it.fill}" stroke="rgba(0,0,0,0.85)" stroke-width="1"/>` +
+            `<text x="${f(b.x)}" y="${f(b.y + 0.5)}" text-anchor="middle" dominant-baseline="central" font-size="${font}" font-weight="bold" font-family="Arial, Helvetica, sans-serif" fill="${textOn(it.fill)}">${it.text}</text>`;
+    }
+    return lines + boxes;
+}
+
+/** Height / period as on the map boxes: "3.2/7s" (period left out when not known) */
+export const ringLabel = (h: number, period: number | null | undefined) => `${h.toFixed(1)}${period != null && isFinite(period) ? `/${Math.round(period)}s` : ''}`;
+
+/** SVG for the map symbol in the "one ring" style (same size and centre as glyphSvg, so it is a drop-in) */
+export function glyphRingSvg(g: ShipGlyph, size = GLYPH_SIZE, south = false, colors: Partial<FlagColors> = {}): string {
+    const c = size / 2;
+    const col = fullFlagColors(colors);
+    const ws: { dir: number; h: number; period: number | null; fill: string }[] = [];
+    if (g.swh) ws.push({ ...g.swh, fill: levelColor(col.swh, g.swh.level) });
+    if (g.sea) ws.push({ ...g.sea, fill: levelColor(col.sea, g.sea.level) });
+    if (g.swell) ws.push({ ...g.swell, fill: levelColor(col.swell, g.swell.level) });
+    if (g.swell2) ws.push({ ...g.swell2, fill: levelColor(col.swell2, g.swell2.level) });
+    let out = `<circle cx="${c}" cy="${c}" r="${RING_R}" fill="rgba(10,18,28,0.25)" stroke="rgba(255,255,255,0.6)" stroke-width="1"/>`;
+    if (g.wind) out += barbSvg(c, c, g.wind.dir, g.wind.kn, levelColor(GLYPH_COLORS.wind, g.wind.level), 27, 0.8, south, 10);
+    const sh = spreadShifts(ws.map(w => w.dir), 13, 40);
+    ws.forEach((w, i) => {
+        const s = sh[i];
+        const p = [at(c, c, w.dir, 33, s), at(c, c, w.dir, 46, -6 + s), at(c, c, w.dir, 46 - 13 * 0.25, s), at(c, c, w.dir, 46, 6 + s)];
+        out += `<polygon points="${p.map(q => `${f(q[0])},${f(q[1])}`).join(' ')}" fill="${w.fill}" stroke="rgba(0,0,0,0.85)" stroke-width="1" stroke-linejoin="round"/>`;
+    });
+    out += ringLabels(c, size, ws.map(w => ({ dir: w.dir, text: ringLabel(w.h, w.period), fill: w.fill })), 52);
+    return `<svg class="pp-glyph pp-glyph--ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg">${out}</svg>`;
+}

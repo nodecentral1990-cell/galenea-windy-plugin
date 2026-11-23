@@ -133,6 +133,7 @@
             <button class="pp-btn pp-btn--ghost small" disabled={$weatherBusy} on:click={() => readLayer('visibility')} title="Experimental: same with the visibility layer">Read visibility (exp.)</button>
             <button class="pp-btn pp-btn--ghost small" disabled={$weatherBusy} on:click={() => readLayer('wind100')} title="Experimental: same with the 100 m wind layer">Read 100 m wind (exp.)</button>
         </div>
+        {#if climFrom != null}<div class="g-status" data-g="clim-note">Forecast ends about {fmtTime(climFrom)} UTC: after that the rows marked <b>C</b> (grey) and the ETA use the <b>usual weather of the month</b> (climate averages from ERA5, 2006–2025), <b>not a forecast</b>. Check again as the forecast grows. <span class="pp-note">Contains modified Copernicus Climate Change Service information 2026 (ERA5, © ECMWF, CC BY 4.0).</span></div>{/if}
         <WeatherTable {rows} {isNow} onRowClick={goTo} />
         <div class="pp-note wx-key">
             <span class="chip parametric">PR</span> parametric · <span class="chip synchronous">SR</span> synchronous · <span class="chip highWaves">HW</span> high waves · <span class="chip surf">BR</span> broaching · amber / red = your limits · no warning ≠ safe
@@ -161,7 +162,7 @@
     import { autoLayers, readLayer, refreshWeather, stopWeather, weatherBusy, weatherStatus, wxAuto } from '../windy/weatherJobs';
     import AreaWeather from './AreaWeather.svelte';
     let moreSrc = false;
-    import { mapProduct, plan, planKey, route, tableStepH, thresholds, timelineTs, updateRoute, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
+    import { climateTick, mapProduct, plan, planKey, route, tableStepH, thresholds, timelineTs, updateRoute, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
     import { downloadFile } from './download';
     import DateTimeField from './DateTimeField.svelte';
     import Hint from './base/Hint.svelte';
@@ -189,7 +190,8 @@
 
     $: canFetch = $route.waypoints.length >= 2 && $plan.etd != null;
     $: stale = $wxPlanKey !== $planKey;
-    $: rows = !stale && $wxSeries.length ? buildRows($route, $plan, $vessel, $thresholds, $tableStepH, $wxSeries, $wxSweepValid) : ([] as WxRow[]);
+    $: climFrom = rows.find(r => r.src?.kind === 'climate')?.time ?? null;
+    $: rows = !stale && $wxSeries.length ? ($climateTick >= 0 ? buildRows($route, $plan, $vessel, $thresholds, $tableStepH, $wxSeries, $wxSweepValid) : ([] as WxRow[])) : ([] as WxRow[]);
     $: info = forecastInfo($wxSeries);
     // what the user's Windy plan gave (free users: 3-hour steps, about 5–7 days; Premium: 1 hour, longer)
     $: planTxt = info && windyCoverage.days != null ? `Your Windy plan gives ${windyCoverage.stepH ? `${windyCoverage.stepH}-hour steps, ` : ''}forecast to about ${windyCoverage.days.toFixed(0)} days ahead${windyCoverage.fakeDropped ? ' (Windy\'s sample days for non-Premium users left out)' : ''}.` : '';

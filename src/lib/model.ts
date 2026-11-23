@@ -96,6 +96,9 @@ export interface Vessel {
     /** RPM ranges the engine must not be run in (critical / barred speed range, cut-in / cut-out of shaft
      *  generator or boiler…) (owner, 2026-10-30). Never suggested by the plugin */
     barredRpm?: BarredRpm[] | null;
+    /** Lowest and highest RPM the ship will run at (owner, 2026-11-23). Empty = no limit (the table range only) */
+    minRpm?: number | null;
+    maxRpm?: number | null;
     /** When the measured roll period was entered (UTC ms) (owner, 2026-11-01) */
     rollPeriodDate?: number | null;
     /** How the forecast wave periods are read by the roll / pitch estimate. Empty = mean period (ECMWF) */

@@ -88,6 +88,8 @@ export const timelineTs = writable<number>(Date.now());
  * timing straight away. They go stale only when the route itself changes.
  */
 export const wxSeries = writable<WxSeries[]>([]);
+/** Goes up when climate months are loaded or switched (the weather table, graphs and ETA are worked out again) */
+export const climateTick = writable(0);
 /** Values read from Windy's map layers (currents, 100 m wind) at the plan times, by time */
 export const wxSweep = writable<Map<number, Partial<WxPoint>>>(new Map());
 /** Route key the forecast belongs to */
@@ -196,11 +198,12 @@ function currentFrom(sweep: Map<number, Partial<WxPoint>>, t: number): Current |
  * stops (weather only once it has been fetched for this route and these times).
  */
 export const sim = derived(
-    [route, vessel, basePlan, wxSeries, wxSweepValid, wxPlanKey, planKey],
+    [route, vessel, basePlan, wxSeries, wxSweepValid, wxPlanKey, planKey, climateTick],
     ([$route, $vessel, $base, $series, $sweep, $wxKey, $key]): SimResult => {
         const wxOk = $series.length > 0 && $wxKey === $key;
         return simulate($route, $base, $vessel, {
-            wx: (p, t) => (wxOk ? weatherAt($series, p, t) : null),
+            // beyond the forecast the usual weather of the month (climate, marked C), so the ETA is not a calm-sea guess
+            wx: (p, t) => (wxOk ? weatherAt($series, p, t, { climate: true }) : null),
             current: (_p, t) => ($route.useCurrents && wxOk ? currentFrom($sweep, t) : null),
         });
     },
@@ -364,6 +367,12 @@ export interface PlacesLayers {
     tss: boolean;
 }
 export const placesLayers = persisted<PlacesLayers>('placesLayers', { ports: false, canals: false, tss: true });
+
+/** Use the climate table beyond the forecast (owner, 2026-11-23); Settings → Weather reading */
+export const climateOn = persisted<boolean>('climateOn', true);
+
+/** How the weather is drawn on the ship symbols (owner, 2026-11-23: "one ring"; the old rings kept as a choice) */
+export const glyphStyle = persisted<'ring' | 'rings'>('glyphStyle', 'ring');
 
 /** Sea areas and limits on the map (owner, 2026-11-22): ECAs, MARPOL special areas by annex, distance-from-land lines */
 export interface SeaAreaLayers {

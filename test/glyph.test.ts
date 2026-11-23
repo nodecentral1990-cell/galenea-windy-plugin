@@ -167,3 +167,31 @@ test('heading / speed arrow: one shape, tip exactly at the speed on the rings, p
         assert.ok(Math.max(...others) < dist, 'tip is the farthest point');
     }
 });
+
+test('one ring (owner 2026-11-23): arrow heads on one ring, height/period boxes outside, barb on the ship', async () => {
+    const { glyphRingSvg } = await import('../src/lib/shipGlyph');
+    const g = {
+        swh: { dir: 220, h: 3.2, period: 7, level: 0 as const },
+        sea: { dir: 200, h: 2.2, period: 6, level: 0 as const },
+        swell: { dir: 300, h: 2.4, period: 8, level: 2 as const },
+        swell2: { dir: 170, h: 0.8, period: 7, level: 0 as const },
+        wind: { dir: 210, kn: 25, level: 0 as const },
+        imo: false,
+    };
+    const svg = glyphRingSvg(g);
+    for (const t of ['3.2/7s', '2.2/6s', '2.4/8s', '0.8/7s']) assert.ok(svg.includes(`>${t}</text>`), t);
+    assert.ok(svg.includes('#ff3030'), 'a wave over the limit is red');
+    // the barb stays inside the ring (tip at 27 px), nothing of it out where the old wind ring was (101–124 px)
+    const lines = [...svg.matchAll(/<line x1="([\d.]+)" y1="([\d.]+)" x2="([\d.]+)" y2="([\d.]+)"/g)].map(m => m.slice(1).map(Number));
+    const c = 126;
+    const barbLines = lines.filter(l => Math.hypot(l[0] - c, l[1] - c) < 31 && Math.hypot(l[2] - c, l[3] - c) < 40);
+    assert.ok(barbLines.length >= 2, 'barb drawn from the ship');
+    assert.ok(lines.every(l => Math.hypot(l[2] - c, l[3] - c) < 100), 'nothing reaches the old outer ring');
+    // boxes do not overlap
+    const rects = [...svg.matchAll(/<rect x="([\d.-]+)" y="([\d.-]+)" width="([\d.]+)" height="([\d.]+)"/g)].map(m => m.slice(1).map(Number));
+    assert.equal(rects.length, 4);
+    for (let i = 0; i < rects.length; i++) for (let j = i + 1; j < rects.length; j++) {
+        const [a, b] = [rects[i], rects[j]];
+        assert.ok(!(a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]), 'label boxes overlap');
+    }
+});

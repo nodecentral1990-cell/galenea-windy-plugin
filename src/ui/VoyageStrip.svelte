@@ -75,7 +75,7 @@
     import { buildRows, forecastInfo, rollPeriodFor, type WxRow } from '../lib/weather';
     import { FORECAST_OLD_H, forecastAge, worstAhead } from '../lib/voyageStrip';
     import { logEvent } from '../lib/activityLog';
-    import { phone, plan, planKey, route, tableStepH, thresholds, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
+    import { climateTick, phone, plan, planKey, route, tableStepH, thresholds, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
     import { refreshWeather, weatherBusy } from '../windy/weatherJobs';
 
     let clock = Date.now();
@@ -94,7 +94,7 @@
             return fallback;
         }
     }
-    $: rows = state === 'ok' ? guard(() => buildRows($route, $plan, $vessel, $thresholds, $tableStepH, $wxSeries, $wxSweepValid), [] as WxRow[]) : ([] as WxRow[]);
+    $: rows = state === 'ok' ? ($climateTick >= 0 ? guard(() => buildRows($route, $plan, $vessel, $thresholds, $tableStepH, $wxSeries, $wxSweepValid), [] as WxRow[]) : ([] as WxRow[])) : ([] as WxRow[]);
     $: worst = state === 'ok' ? guard(() => worstAhead(rows, clock - ($tableStepH * 3600e3) / 2), null) : null;
     $: info = state === 'ok' ? guard(() => forecastInfo($wxSeries), null) : null;
     $: fetchedAt = $wxSeries.length ? Math.min(...$wxSeries.map(s => s.fetchedAt ?? Infinity)) : null;

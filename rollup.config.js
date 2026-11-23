@@ -32,12 +32,12 @@ export default {
             file: `dist/${out}.js`,
             format: 'module',
             sourcemap: false,
-            plugins: [rollupCleanup({ comments: 'none', extensions: ['ts'] }), terser({ compress: { passes: 3, pure_getters: true }, format: { comments: false } })],
+            plugins: [rollupCleanup({ comments: 'none', extensions: ['ts'] }), terser({ ecma: 2020, module: true, toplevel: true, compress: { passes: 3, pure_getters: true }, format: { comments: false } })],
         },
         {
             file: `dist/${out}.min.js`,
             format: 'module',
-            plugins: [rollupCleanup({ comments: 'none', extensions: ['ts'] }), terser({ compress: { passes: 3, pure_getters: true }, format: { comments: false } })],
+            plugins: [rollupCleanup({ comments: 'none', extensions: ['ts'] }), terser({ ecma: 2020, module: true, toplevel: true, compress: { passes: 3, pure_getters: true }, format: { comments: false } })],
         },
     ],
 

@@ -1,13 +1,15 @@
 <!-- Weather for an area (owner, 2026-11-19): north / south latitude, west / east longitude make a box; "Get weather"
-     downloads the forecast on a grid over it (0.5°–3° apart, at most 300 points); fetched again when Windy has a newer run.
+     downloads the forecast on a grid over it (0.5°–6° apart, at most 400 points; was 3° / 300 = about 50° × 50° until
+     the owner asked for bigger areas, 2026-11-23); fetched again when Windy has a newer run.
      A route inside the box then needs no download of its own when it is changed. -->
 <div class="aw" data-g="wx-area">
     <div class="aw__head">
         <label class="switch aw__on" title="Use the area's forecast for the weather"><input type="checkbox" checked={$wxAuto.areaOn} on:change={e => (e.currentTarget.checked ? on() : areaOff())} /><span class="knob" /><b>Weather for an area</b></label>
         <Hint title="Weather for an area">
-            <p>Type the <b>north and south latitude</b> and the <b>west and east longitude</b> of the area (e.g. <span class="mono">48 30N</span>, <span class="mono">005 15W</span>, or −5.25), or take them from the map you see or from your route. <b>Get weather</b> downloads the forecast on a grid over the box (0.5°, 1°, 2° or 3° apart: the finest that keeps to 300 points, one download each).</p>
+            <p>Type the <b>north and south latitude</b> and the <b>west and east longitude</b> of the area (e.g. <span class="mono">48 30N</span>, <span class="mono">005 15W</span>, or −5.25), or take them from the map you see or from your route. <b>Get weather</b> downloads the forecast on a grid over the box (0.5° to 6° apart: the finest that keeps to 400 points, one download each, so a bigger box gets points further apart). Up to about 110° × 110°.</p>
             <p>While the plugin is open it is fetched again by itself when Windy has a newer forecast run (checked every hour). A route inside the box then needs no download of its own when you change it: good for trying different tracks round bad weather. Sea, currents and visibility come with it (Open-Meteo), so it also works with the Windy tab hidden.</p>
-            <p>The box is drawn on the map (yellow, dashed). Big areas take longer: about 1–2 minutes for 300 points.</p>
+            <p>Why a limit: every grid point is a separate forecast download from Windy (and Open-Meteo for sea, currents and visibility), about 2 minutes for 400 points. More points would take long and load Windy's service; points further apart than 6° (360 nm) tell little. For a whole ocean, a coarse box gives the overview and the route keeps its own close points.</p>
+            <p>The box is drawn on the map (yellow, dashed).</p>
         </Hint>
     </div>
     <div class="aw__grid">
@@ -20,8 +22,9 @@
         <button class="pp-btn g-btn--primary" disabled={$areaBusy || !grid} on:click={get} title="Download the forecast for the area now"><Icon name="download" size={15} /> Get weather</button>
         {#if !$phone}<button class="pp-btn pp-btn--ghost small" on:click={fromMap} title="The map you see now">Map view</button>{/if}
         <button class="pp-btn pp-btn--ghost small" disabled={$route.waypoints.length < 2} on:click={fromRoute} title="Round the route, 2° extra on each side">Round the route</button>
-        {#if grid}<span class="pp-note">{grid.points.length} points, every {grid.step}°</span>{:else if anyTyped}<span class="pp-note pp-err">Check the four values (north of south; at most about 50° × 50°)</span>{/if}
+        {#if grid}<span class="pp-note">{grid.points.length} points, every {grid.step}° (about {Math.round(grid.step * 60)} nm), about {Math.max(1, Math.round((grid.points.length * 0.3) / 60))} min to download</span>{:else if anyTyped}<span class="pp-note pp-err">Check the four values: north must be north of south; at most about 110° × 110°</span>{/if}
     </div>
+    {#if grid && grid.step >= 4}<p class="pp-note">A big area gets a coarse grid ({grid.step}° ≈ {Math.round(grid.step * 60)} nm between points): good for an overview and for weather off the track; your route still gets its own forecast points every 30–60 nm.</p>{/if}
     {#if $areaStatus}<div class="g-status" class:g-status--ok={/^Done|^Updated/.test($areaStatus)}>{$areaStatus}{#if $lastAreaFetch && $wxAuto.every3h}{" "}Fetched again by itself when Windy has a newer run.{/if}</div>{/if}
 </div>
 

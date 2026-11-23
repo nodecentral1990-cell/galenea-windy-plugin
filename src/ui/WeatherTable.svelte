@@ -42,8 +42,8 @@
         <tbody>
             {#each rows as r}
                 {@const lv = levelsOf(r)}
-                <tr class:wp={r.atWaypoint != null} class:now={isNow(r)} class:past={r.time < Date.now() - 1800e3} on:click={() => onRowClick(r)}>
-                    <td class="g nowrap">{fmtTime(r.time).slice(0, 6)}{#if r.src}<span class="srcmk" class:om={r.src.kind === 'openmeteo'} title={r.src.label}>{r.src.kind === 'openmeteo' ? 'OM' : 'E'}</span>{/if}</td>
+                <tr class:wp={r.atWaypoint != null} class:now={isNow(r)} class:past={r.time < Date.now() - 1800e3} class:clim={r.src?.kind === 'climate'} on:click={() => onRowClick(r)}>
+                    <td class="g nowrap">{fmtTime(r.time).slice(0, 6)}{#if r.src}<span class="srcmk" class:om={r.src.kind === 'openmeteo'} class:cl={r.src.kind === 'climate'} title={r.src.label}>{r.src.kind === 'openmeteo' ? 'OM' : r.src.kind === 'climate' ? 'C' : 'E'}</span>{/if}</td>
                     <td class="mono">{fmtTime(r.time).slice(7)}</td>
                     <td>{#if r.atWaypoint != null}<b>WP{r.atWaypoint + 1}</b>{/if}</td>
                     <td class="g mono">{fmtLat(r.pos.lat, 1)}</td>
@@ -97,6 +97,7 @@
                         <td>{w.precipMm != null && w.precipMm > 0 ? f1(w.precipMm) : ''}{w.fog ? ' fog' : ''}{w.thunder ? ' ⚡' : ''}</td>
                         <td class="g">{f0(w.pressureHpa)}</td>
                         <td class="warn">
+                            {#if w.clim}<span class="climtxt" title={r.src?.label ?? ''}>gale {pct(w.clim.galePct)} · SWH&gt;4 {pct(w.clim.hsGt4Pct)} · &gt;6 {pct(w.clim.hsGt6Pct)}</span>{/if}
                             {#each r.resonance as h}<span class="chip {h.phenomenon}" title={h.detail}>{SHORT[h.phenomenon]}</span>{/each}
                         </td>
                     {:else}
@@ -129,6 +130,7 @@
     const motionOf = (r: WxRow) => (r.stopped ? motionAt(r.wx, r.pos.course, 0, $vessel) : motionAt(r.wx, r.pos.course, r.speedKn, $vessel));
 
     const f0 = (v: number | null | undefined) => (v == null ? '' : v.toFixed(0));
+    const pct = (v: number | null | undefined) => (v == null ? '—' : `${Math.round(v)}%`);
     const f1 = (v: number | null | undefined) => (v == null ? '' : v.toFixed(1));
     const dir = (d: number | null) => (d == null ? '' : d.toFixed(0).padStart(3, '0') + '°');
     /** Visibility in nm; anything over 7 nm is shown as ">7" */
@@ -285,5 +287,17 @@
         &.om {
             background: #2f7d6d;
         }
+        &.cl {
+            background: #8a8f98;
+        }
+    }
+    /* climate rows (beyond the forecast): grey and slanted, never warning colours */
+    tr.clim td {
+        color: var(--g-text-3, #a7b0ba);
+        font-style: italic;
+    }
+    .climtxt {
+        font-size: 10.5px;
+        white-space: nowrap;
     }
 </style>
