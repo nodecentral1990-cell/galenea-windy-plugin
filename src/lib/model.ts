@@ -272,6 +272,8 @@ export interface LegCalc {
     slipPct: number | null;
     /** Speed over ground needed to keep a fixed time (ETA mode or a fixed waypoint ETA); null = planned speed */
     targetSog: number | null;
+    /** The fixed time (ETA or 📌) this leg's stretch must arrive by, UTC ms; null = free speed */
+    anchorMs?: number | null;
     hours: number;
     departMs: number | null;
     arriveMs: number | null;
@@ -389,6 +391,7 @@ export function computePlan(route: Route, vessel?: Vessel): PlanCalc {
             engineSpeed: null,
             slipPct: null,
             targetSog: null,
+            anchorMs: null,
             hours: 0,
             departMs: null,
             arriveMs: null,
@@ -433,6 +436,7 @@ export function computePlan(route: Route, vessel?: Vessel): PlanCalc {
                 const sog = dists.reduce((s, d) => s + d, 0) / hours;
                 part.forEach(l => (l.targetSog = sog));
             }
+            part.forEach(l => (l.anchorMs = tk));
             stretches++;
             from = k;
             first = legs[from]?.distNm ?? 0;
@@ -469,7 +473,7 @@ export function computePlan(route: Route, vessel?: Vessel): PlanCalc {
     if (route.etd != null && legs.length) {
         applyAnchors(0, route.etd + delayAtStartH * HOUR, legs[0].distNm);
         if (fixInfo) {
-            legs.slice(fixInfo.legIdx).forEach(l => (l.targetSog = null));
+            legs.slice(fixInfo.legIdx).forEach(l => ((l.targetSog = null), (l.anchorMs = null)));
             stretches = 0;
             applyAnchors(fixInfo.legIdx, fixInfo.t, legs[fixInfo.legIdx].distNm - fixInfo.sNm);
         }

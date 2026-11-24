@@ -47,8 +47,8 @@
         {@const leg = $plan.legs[$plan.fix.legIdx]}
         <div class="result">
             {#if leg?.targetSog != null}
-                To keep {nextFixedLabel()}: <b>{leg.targetSog.toFixed(2)} kn over ground</b> from your position
-                (speed in calm water {($sim.legs[$plan.fix.legIdx]?.sicw ?? leg.calmSpeed).toFixed(1)} kn{$sim.legs[$plan.fix.legIdx]?.rpm != null ? `, about ${$sim.legs[$plan.fix.legIdx].rpm?.toFixed(0)} rpm` : ''}).
+                To keep {nextFixedLabel()}: steady <b>{($sim.legs[$plan.fix.legIdx]?.sicwAhead ?? leg.calmSpeed).toFixed(1)} kn in calm water{$sim.legs[$plan.fix.legIdx]?.rpm != null ? `, about ${$sim.legs[$plan.fix.legIdx].rpm?.toFixed(0)} rpm` : ''}</b> from your position
+                (over ground {leg.sog.toFixed(1)} kn on average; it rises and falls with the weather and current).
             {:else}
                 At your planned speeds: ETA <b>{fmtTime($plan.eta)} UTC</b>. Fix an ETA in the table (📌) or set "ETD + ETA" to get the speed needed.
             {/if}

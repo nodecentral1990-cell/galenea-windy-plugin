@@ -214,3 +214,23 @@ test('present position: the part of the leg already sailed is not counted as a s
     near(s.steamingH, s.totalH, 0.05);
     near(s.avgSog as number, s.distNm / s.totalH, 0.01, 'SOG = distance / time under way');
 });
+
+test('a fixed ETA is kept with ONE steady calm-water speed (RPM) per leg; SOG varies with the weather (owner 2026-11-24)', () => {
+    const r = route3();
+    r.mode = 'eta';
+    r.eta = T0 + 22 * H;
+    r.lossMethod = 'kwon';
+    const v = { ...emptyVessel(), speedTable: table, lbp: 236, breadth: 42.8, draftFwd: 12, draftAft: 12, cb: 0.65 };
+    const base = computePlan(r, v);
+    // head weather for the first 8 hours only, then calm
+    const env: Env = { wx: (_p, t) => (t < T0 + 8 * H ? ({ windKn: 30, windDir: 90, hs: 4, hsDir: 90 } as WxPoint) : ({ windKn: 0, windDir: 90, hs: 0, hsDir: 90 } as WxPoint)), current: () => null };
+    const sim = simulate(r, base, v, env);
+    near(sim.plan.eta as number, r.eta as number, 5e3, 'ETA kept to the second');
+    const steaming = sim.plan.track!.filter(tp => !tp.stopped && tp.sicw > 0);
+    for (const leg of [0, 1]) {
+        const s = steaming.filter(tp => tp.legIdx === leg).map(tp => tp.sicw);
+        near(Math.max(...s) - Math.min(...s), 0, 1e-9, `leg ${leg}: SiCW steady`);
+    }
+    const sogs = steaming.map(tp => tp.sog);
+    assert.ok(Math.max(...sogs) - Math.min(...sogs) > 0.5, 'SOG changes between the bad weather and the calm');
+});

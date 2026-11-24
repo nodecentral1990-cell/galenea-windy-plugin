@@ -10,6 +10,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.32.0',
+        date: '2026-11-24',
+        notes: [
+            'A fixed ETA (ETD + ETA, or a 📌 time at a waypoint) is now kept the way ships are run: one steady speed in calm water, so one RPM, for each leg, worked out so the ship still arrives on time. The speed over ground now rises and falls with the weather and current. Before, the plugin held the speed over ground steady and changed the RPM every half hour, which no one does at sea (your report). The planned speeds of the legs keep their proportions (e.g. slower in port areas).',
+        ],
+    },
+    {
         version: '0.31.0',
         date: '2026-11-24',
         notes: [

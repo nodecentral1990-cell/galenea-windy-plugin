@@ -293,8 +293,11 @@ export interface Env {
 
 export interface LegSpeed {
     legIdx: number;
-    /** Planned speed in calm water (speed mode) or the average needed (ETA mode) */
+    /** Speed in calm water: planned (speed mode) or the steady speed that keeps the fixed time (ETA / 📌); on the leg with
+     * the present position, averaged with the part already sailed */
     sicw: number;
+    /** Steady speed in calm water from here on (the leg with the present position: from the position) */
+    sicwAhead?: number;
     rpm: number | null;
     fuelPerDay: number | null;
     outsideTable: boolean;
@@ -320,7 +323,7 @@ export interface SimResult {
  * Step along the route from ETD (default 30 min steps), applying the weather loss and current at
  * each step, and the planned stops (ship stopped at the waypoint, drifting). Speed mode keeps
  * each leg's speed in calm water; legs timed to a fixed ETA (ETA mode or a fixed waypoint ETA)
- * adjust it to hold the required speed over ground.
+ * keep one steady calm-water speed per leg, scaled by trial so the fixed time is kept (the SOG varies).
  */
 export function simulate(route: Route, base: PlanCalc, vessel: Vessel, env: Env, stepMin = 30): SimResult {
     const notes: string[] = [];
@@ -376,12 +379,65 @@ export function simulate(route: Route, base: PlanCalc, vessel: Vessel, env: Env,
         startLeg = fx.legIdx;
         t = fx.t;
     }
+    // One steady calm-water speed (one RPM) per leg, also when a time must be kept (owner, 2026-11-24: "we keep on
+    // constant RPM ... we are not gonna change RPM continuously"): before a fixed ETA / 📌 time, the planned calm speeds
+    // of the stretch are scaled by one factor, found by trial, so that the stretch arrives on time; the speed over
+    // ground then rises and falls with the weather and current (before 0.32 the SOG was held and the RPM varied).
+    const legTime = (j: number, s0: number, t0: number, sicw: number): number => {
+        const lg = legs[j];
+        let ss = s0;
+        let tt = t0;
+        let g = 0;
+        while (ss < lg.distNm - 1e-6 && g++ < 20000) {
+            const p = lg.geom.pointAt(ss);
+            const loss = li ? weatherLossKn(env.wx(p, tt), p.course, sicw, li) : lg.allowance;
+            const sog = Math.max(0.5, sogWithCurrent(Math.max(0.5, sicw - loss), p.course, env.current(p, tt)).sog);
+            const dtH = Math.min(stepH, (lg.distNm - ss) / sog);
+            ss += sog * dtH;
+            tt += dtH * HOUR;
+        }
+        return tt;
+    };
+    const calmFor = new Map<number, number>();
+    const solveStretch = (i0: number, s0: number, t0: number) => {
+        const anchor = legs[i0].anchorMs as number;
+        const idx: number[] = [];
+        for (let j = i0; j < legs.length && legs[j].targetSog != null && legs[j].anchorMs === anchor; j++) idx.push(j);
+        const stopsH = idx.slice(0, -1).reduce((a, j) => a + legs[j].delayAfterH, 0);
+        const wantH = (anchor - t0) / HOUR - stopsH;
+        const run = (m: number) => {
+            let tt = t0;
+            idx.forEach((j, k) => {
+                tt = legTime(j, k === 0 ? s0 : 0, tt, legs[j].calmSpeed * m);
+                if (k < idx.length - 1) tt += legs[j].delayAfterH * HOUR;
+            });
+            return (tt - t0) / HOUR - stopsH;
+        };
+        let m = 1;
+        if (wantH > 0) {
+            // time ≈ 1 / speed: scale by the time ratio, then the secant method to arrive on the second
+            let pm: number | null = null;
+            let ph = 0;
+            for (let it = 0; it < 16; it++) {
+                const h = run(m);
+                if (!(h > 0) || Math.abs(h - wantH) * 3600 < 1) break;
+                let next = m * (h / wantH);
+                if (pm != null && Math.abs(h - ph) > 1e-12) next = m - ((h - wantH) * (m - pm)) / (h - ph);
+                pm = m;
+                ph = h;
+                m = Math.min(4, Math.max(0.2, next));
+            }
+        }
+        idx.forEach(j => calmFor.set(j, legs[j].calmSpeed * m));
+    };
     for (let i = startLeg; i < legs.length; i++) {
         const leg = legs[i];
         const fromFix = !!fx && i === fx.legIdx;
         if (!fromFix) leg.departMs = t;
         const target = leg.targetSog;
-        const planned = leg.calmSpeed;
+        if (target != null && leg.anchorMs != null && !calmFor.has(i)) solveStretch(i, fromFix ? fx.sNm : 0, t);
+        const steady = calmFor.get(i);
+        const planned = steady ?? leg.calmSpeed;
         let s = fromFix ? fx.sNm : 0;
         let sumLoss = 0;
         let sumCur = 0;
@@ -395,7 +451,7 @@ export function simulate(route: Route, base: PlanCalc, vessel: Vessel, env: Env,
             let sicw: number;
             let loss: number;
             let stw: number;
-            if (target != null) {
+            if (target != null && steady == null) {
                 stw = stwForSog(target, p.course, cur);
                 loss = li ? weatherLossKn(w, p.course, stw, li) : leg.allowance;
                 sicw = stw + loss;
@@ -447,6 +503,7 @@ export function simulate(route: Route, base: PlanCalc, vessel: Vessel, env: Env,
         out.push({
             legIdx: i,
             sicw: allH > 0 ? (sicwUsed * sumH + sailedRate * sailedH) / allH : sicwUsed,
+            sicwAhead: sicwUsed,
             rpm: tv?.rpm ?? null,
             fuelPerDay: tv?.fuel ?? null,
             outsideTable: !!tv?.outside,
