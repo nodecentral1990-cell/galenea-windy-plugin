@@ -1,5 +1,5 @@
 // Updates (owner, 2026-10-28): look for a newer published version of the plugin (button, and by
-// itself every 30 days), say so, and install it with one click where Windy allows it.
+// itself once a day; 30 days before 0.33), say so, and install it with one click where Windy allows it.
 // How: every published version has its own folder on Windy's plugin server; the plugin asks for
 // the plugin.json of the next possible version numbers (e.g. 0.13.1, 0.14.0, 1.0.0) and follows
 // them up to the newest. Install: Windy's own "install plugin from URL" function, which is not an
@@ -100,10 +100,24 @@ export async function checkForUpdates(manual = false): Promise<string | null> {
     }
 }
 
-/** On opening: the automatic check, once every 30 days */
+/** On opening: the automatic check, at most once a day (owner, 2026-11-24: users should see a new version at once; was 30 days) */
 export function autoCheck(): void {
     const s = get(updates);
-    if (s.auto && Date.now() - s.lastCheck > 30 * DAY) checkForUpdates(false).catch(() => {});
+    if (s.auto && Date.now() - s.lastCheck > DAY) checkForUpdates(false).catch(() => {});
+}
+
+/** The header's update button asks the banner to show the install steps (when one-click install is not possible) */
+export const wantInstallSteps = writable(false);
+
+/** The header's update button (owner, 2026-11-24): install at once, or reload when installed, or show the steps */
+export async function updateFromHeader(): Promise<void> {
+    const v = get(updates).latest;
+    if (!v) return;
+    logEvent('update', `Header update button: ${v}`);
+    updates.update(s => ({ ...s, dismissed: null }));
+    if (get(installedPending) === v) return reloadWindy();
+    const ok = await installUpdate(v);
+    if (!ok) wantInstallSteps.set(true);
 }
 
 /** One-click install through Windy, if it lets the plugin do it; otherwise false (show the manual steps). */

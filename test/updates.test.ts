@@ -18,3 +18,15 @@ test('release notes: the current version has notes, newest first; notes after an
     for (let i = 1; i < RELEASE_NOTES.length; i++) assert.equal(compareVersions(RELEASE_NOTES[i - 1].version, RELEASE_NOTES[i].version), 1);
     assert.deepEqual(notesBetween('0.24.0', '0.25.0').map(n => n.version), ['0.25.0', '0.24.2', '0.24.1']);
 });
+
+test('speed graphs: a line every knot, labels every knot where there is room (owner 2026-11-24)', async () => {
+    const { knotTicks } = await import('../src/lib/graphSeries');
+    const t = knotTicks(0, 21.3, 20)!;
+    assert.deepEqual(t.lines.slice(0, 4), [0, 1, 2, 3]);
+    assert.equal(t.lines.length, 22);
+    assert.deepEqual(t.labels, t.lines, 'room for every label');
+    const small = knotTicks(0, 21.3, 5)!;
+    assert.equal(small.lines.length, 22, 'still a line every knot');
+    assert.deepEqual(small.labels, [0, 5, 10, 15, 20], 'labels every 5 kn when squeezed');
+    assert.equal(knotTicks(0, 100, 5), null, 'very wide ranges keep the normal steps');
+});

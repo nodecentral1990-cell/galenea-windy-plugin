@@ -6,6 +6,12 @@
         <span class="g-head__tools" on:click|stopPropagation>
             <button class="g-btn g-btn--s g-now" on:click={goToNow} title="Set the map and the plugin to the present time (computer clock, UTC) with the ship in the middle"><Icon name="clock" size={15} /> Now <span class="g-now__t">{fmtTime(clock).slice(7)} UTC</span></button>
             <button class="g-ibtn" class:is-on={graphsShown} on:click={() => ($phone ? phoneGraphOpen.update(x => !x) : toggleGraphs())} title="Graph window (show / hide)" aria-label="Graph window" aria-pressed={graphsShown}><Icon name="chart" /></button>
+            {#if newer}
+                <!-- a newer version is out: one click installs it (owner, 2026-11-24) -->
+                <button class="g-btn g-btn--s g-upd" on:click={updateFromHeader} title={$installedPending === $updates.latest ? `Version ${$updates.latest} is installed: reload Windy to start it` : `Version ${$updates.latest} is available (you have ${config.version}). Click to install it now.`} aria-label="Install the new version"
+                    ><Icon name="download" size={14} /><span class="g-upd__t">{$installedPending === $updates.latest ? 'Reload' : 'Update'} v{$updates.latest}</span></button
+                >
+            {/if}
             <button class="g-ibtn g-help-btn" class:is-on={help} on:click={() => openHelp()} title="Help, guide, what's new, usage, feedback, updates" aria-label="Help">
                 <Icon name="info" />{#if newer || $otherCopy}<span class="g-dot" class:g-dot--red={!!$otherCopy} />{/if}
             </button>
@@ -222,7 +228,7 @@
     import OptimiseTab from './ui/OptimiseTab.svelte';
     import { motionAt } from './lib/motionEstimate';
     import { otherCopy, startLogging, stopLogging } from './logHooks';
-    import { checkForUpdates, reloadWindy, updateBusy, updateStatus, updates } from './windy/updates';
+    import { checkForUpdates, installedPending, reloadWindy, updateBusy, updateFromHeader, updateStatus, updates } from './windy/updates';
     import { compareVersions } from './lib/releaseNotes';
     import { panelDim } from './state';
     $: newer = !!$updates.latest && compareVersions($updates.latest, config.version) > 0;
@@ -736,6 +742,26 @@
         box-shadow: 0 0 0 2px var(--g-bg-0);
         &.g-dot--red {
             background: var(--g-danger);
+        }
+    }
+    /* new version out: a clear green button next to the ⓘ (owner, 2026-11-24) */
+    .g-upd {
+        background: #1e8e3e !important;
+        border-color: #1e8e3e !important;
+        color: #fff !important;
+        font-weight: 700;
+        gap: 4px;
+        margin-right: 2px;
+        animation: g-upd-pulse 2s ease-in-out 3;
+    }
+    @keyframes g-upd-pulse {
+        50% {
+            box-shadow: 0 0 0 4px rgba(30, 142, 62, 0.35);
+        }
+    }
+    @media (max-width: 430px) {
+        .g-upd__t {
+            display: none;
         }
     }
     .g-tagline {

@@ -134,6 +134,19 @@ export function axisPlan(ids: string[], values: Record<string, (number | null)[]
 }
 
 /** Round tick values for an axis */
+/**
+ * Speed axes (kn) with a line for every knot (owner, 2026-11-24: "make it for every knot - 5 kts is too much to guess"):
+ * `lines` every 1 kn, `labels` every 1 kn when there is room (at least `minPx` between them), else every 2 or 5 kn.
+ * Very wide ranges (over 60 kn) fall back to the normal steps.
+ */
+export function knotTicks(lo: number, hi: number, pxPerKn: number, minPx = 13): { lines: number[]; labels: number[] } | null {
+    if (!(hi > lo) || hi - lo > 60) return null;
+    const lines: number[] = [];
+    for (let v = Math.ceil(lo - 1e-9); v <= hi + 1e-9; v++) lines.push(v + 0); // + 0: no "-0"
+    const every = [1, 2, 5, 10].find(k => k * pxPerKn >= minPx) ?? 10;
+    return { lines, labels: lines.filter(v => Math.abs(v % every) < 1e-9) };
+}
+
 export function niceTicks(lo: number, hi: number, n = 4): number[] {
     const span = hi - lo;
     if (!(span > 0)) return [lo];

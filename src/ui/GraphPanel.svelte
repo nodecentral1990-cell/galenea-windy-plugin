@@ -75,8 +75,10 @@
                         <svg width={plotW} height={graphH} class="gp__svg">
                             {#each xTicks as t}<line x1={xOf(t)} x2={xOf(t)} y1={TOP} y2={graphH} class="gp__grid" />{/each}
                             {#if g.plan.left && g.plan.ranges[g.plan.left]}
+                                {#each yLines(g.plan.left, g.plan.ranges[g.plan.left]) as v}
+                                    <line x1={ML} x2={plotW - MR} y1={yOf(v, g.plan.ranges[g.plan.left])} y2={yOf(v, g.plan.ranges[g.plan.left])} class="gp__grid" class:gp__grid--minor={!yTicks(g.plan.left, g.plan.ranges[g.plan.left]).includes(v)} />
+                                {/each}
                                 {#each yTicks(g.plan.left, g.plan.ranges[g.plan.left]) as v}
-                                    <line x1={ML} x2={plotW - MR} y1={yOf(v, g.plan.ranges[g.plan.left])} y2={yOf(v, g.plan.ranges[g.plan.left])} class="gp__grid" />
                                     <text x={ML - 4} y={yOf(v, g.plan.ranges[g.plan.left]) + 3} class="gp__ax" text-anchor="end">{fmtTick(v)}</text>
                                 {/each}
                                 <text x={4} y={TOP - 3} class="gp__ax gp__unitlbl">{unitName(g.plan.left)}</text>
@@ -126,7 +128,7 @@
     import { onResetAll } from './floatWin';
     import { updateSafeTop } from './phoneSafe';
     updateSafeTop();
-    import { axisPlan, GRAPH_SERIES, niceTicks, seriesById, type GraphCtx, type GraphSeries } from '../lib/graphSeries';
+    import { axisPlan, GRAPH_SERIES, knotTicks, niceTicks, seriesById, type GraphCtx, type GraphSeries } from '../lib/graphSeries';
     import { buildRows, forecastInfo, type WxRow } from '../lib/weather';
     import { motionAt } from '../lib/motionEstimate';
     import { fmtTime } from '../lib/format';
@@ -217,7 +219,11 @@
     $: tOf = (x: number) => t0 + ((x - ML) / Math.max(1, plotW - ML - MR)) * (t1 - t0);
     // reactive (0.23.4): the drawing must follow the window size, which is only known after the first draw
     $: yOf = (v: number, r: [number, number] | undefined) => (r ? TOP + (1 - (v - r[0]) / (r[1] - r[0] || 1)) * (graphH - TOP - 2) : 0);
-    $: yTicks = (u: string, r: [number, number]) => (u === '°' ? [0, 90, 180, 270, 360] : niceTicks(r[0], r[1], Math.max(2, Math.min(5, Math.floor(graphH / 28)))));
+    $: pxPerUnit = (r: [number, number]) => (graphH - TOP - 2) / (r[1] - r[0] || 1);
+    // speeds: a line every knot, labels every knot where there is room (owner, 2026-11-24)
+    $: yTicks = (u: string, r: [number, number]) =>
+        u === '°' ? [0, 90, 180, 270, 360] : (u === 'kn' ? knotTicks(r[0], r[1], pxPerUnit(r))?.labels : null) ?? niceTicks(r[0], r[1], Math.max(2, Math.min(5, Math.floor(graphH / 28))));
+    $: yLines = (u: string, r: [number, number]) => (u === 'kn' ? knotTicks(r[0], r[1], pxPerUnit(r))?.lines : null) ?? yTicks(u, r);
     $: pathOf = (vals: (number | null)[], r: [number, number] | undefined): string => {
         let d = '';
         let pen = false;
@@ -638,6 +644,9 @@
     .gp__grid {
         stroke: rgba(255, 255, 255, 0.1);
         stroke-width: 1;
+    }
+    .gp__grid--minor {
+        stroke: rgba(255, 255, 255, 0.05);
     }
     .gp__ax {
         fill: rgba(255, 255, 255, 0.7);

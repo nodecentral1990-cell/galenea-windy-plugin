@@ -1,6 +1,6 @@
 <!-- Settings → Updates -->
 <p class="pp-note">This is version <b>{config.version}</b>.</p>
-<label class="gs-check"><input type="checkbox" bind:checked={$updates.auto} /> Check for a newer version by itself every 30 days</label>
+<label class="gs-check"><input type="checkbox" bind:checked={$updates.auto} /> Check for a newer version by itself (once a day)</label>
 <div class="gs-urow">
     <button class="pp-btn" disabled={$updateBusy} on:click={() => checkForUpdates(true)}><Icon name="refresh" size={15} /> Check for updates now</button>
     {#if $updates.lastCheck}<span class="pp-note">Last checked {new Date($updates.lastCheck).toISOString().slice(0, 16).replace('T', ' ')} UTC</span>{/if}

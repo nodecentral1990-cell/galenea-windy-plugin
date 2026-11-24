@@ -6,9 +6,14 @@
             <button class="pp-btn small ub__ok" on:click={seenIt} title="Close this note (Help → Guide → What's new keeps it)">OK, close</button>
         </div>
         <!-- its own scroll bar, so the rest of the panel is always reachable (owner's report 0.23.2) -->
-        <ul class="ub__list pp-scroll">
-            {#each notes as n}{#each n.notes as line}<li>{line}</li>{/each}{/each}
-        </ul>
+        <!-- every version since the one this user last opened, each with its number and date (owner, 2026-11-24) -->
+        <div class="ub__list pp-scroll">
+            {#each notes as n}
+                <div class="ub__ver">Version {n.version} · {fmtDay(n.date)}</div>
+                <ul>{#each n.notes as line}<li>{line}</li>{/each}</ul>
+            {/each}
+            {#if older}<p class="ub__more">Changes before {oldest}: Help → Guide → What's new.</p>{/if}
+        </div>
         <button class="pp-btn small" on:click={seenIt}>OK</button>
     </div>
 {:else if available}
@@ -33,20 +38,34 @@
     import { onMount } from 'svelte';
 
     import config from '../pluginConfig';
-    import { compareVersions, notesBetween } from '../lib/releaseNotes';
-    import { autoCheck, installedPending, installUpdate, reloadWindy, updateBusy, updateStatus, updates } from '../windy/updates';
+    import { compareVersions, notesBetween, RELEASE_NOTES } from '../lib/releaseNotes';
+    import { autoCheck, installedPending, installUpdate, reloadWindy, updateBusy, updateStatus, updates, wantInstallSteps } from '../windy/updates';
     import InstallSteps from './InstallSteps.svelte';
 
     let steps = false;
     let busy = false;
     let justUpdated = false;
     let notes = notesBetween(null, config.version).slice(0, 1);
+    let older = false;
+    const oldest = RELEASE_NOTES[RELEASE_NOTES.length - 1]?.version ?? '';
+    const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const fmtDay = (d: string) => {
+        const [y, m, dd] = d.split('-').map(Number);
+        return y && m && dd ? `${dd} ${MON[m - 1]} ${y}` : d;
+    };
+    // the header's update button could not install by itself: show the steps here
+    $: if ($wantInstallSteps) {
+        steps = true;
+        wantInstallSteps.set(false);
+    }
 
     onMount(() => {
         const seen = $updates.seen;
         if (seen && compareVersions(seen, config.version) < 0) {
             justUpdated = true;
             notes = notesBetween(seen, config.version);
+            // last opened a version older than the notes kept in the plugin: say where the rest is
+            older = RELEASE_NOTES.length > 0 && compareVersions(seen, RELEASE_NOTES[RELEASE_NOTES.length - 1].version) < 0;
         } else if (!seen) {
             updates.update(s => ({ ...s, seen: config.version }));
         }
@@ -117,5 +136,17 @@
         overflow-y: auto;
         margin: 6px 0;
         padding-right: 6px;
+        ul {
+            margin: 2px 0 6px;
+            padding-left: 18px;
+        }
+    }
+    .ub__ver {
+        font-weight: 700;
+        margin-top: 4px;
+    }
+    .ub__more {
+        opacity: 0.8;
+        margin: 4px 0;
     }
 </style>

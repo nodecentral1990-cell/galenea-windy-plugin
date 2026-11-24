@@ -10,6 +10,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.33.0',
+        date: '2026-11-24',
+        notes: [
+            'Graphs: speed axes now have a line for every knot (labels every knot where there is room), instead of every 5 kn.',
+            'New version out? A green "Update" button now appears in the header next to the ⓘ: one click installs it (where Windy allows; otherwise the steps are shown). The plugin now looks for a new version once a day instead of every 30 days.',
+            '"What\'s new" after an update now lists every version since the one you last opened, each with its number and date.',
+        ],
+    },
+    {
         version: '0.32.0',
         date: '2026-11-24',
         notes: [

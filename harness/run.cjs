@@ -1788,6 +1788,9 @@ async function go(page, name) {
     await go(page, 'Route');
     await page.waitForSelector('.ub.new', { timeout: 10000 });
     ok(new RegExp(`Version ${newer.replace(/\./g, '\\.')} is available`).test(await page.locator('.ub.new').innerText()), `update check finds the newest published version (${newer})`);
+    // a clear green button next to the ⓘ in the header (owner, 2026-11-24)
+    const upd = page.locator('.g-head .g-upd');
+    ok((await upd.count()) === 1 && (await upd.innerText()).includes(newer), `header shows an Update v${newer} button next to the ⓘ`);
     await page.locator('.ub.new button', { hasText: 'Install update' }).click();
     await page.waitForTimeout(300);
     ok((await page.locator('.ub.new ol.steps li').count()) === 7 && (await page.locator('.ub.new').innerText()).includes(`${newer}/plugin.min.js`), 'no one-click install here: the 7 steps with the new link are shown');
@@ -1824,6 +1827,7 @@ async function go(page, name) {
         log.push('INFO after reload: ' + (await page.locator('#pane').innerText().catch(() => 'no panel')).replace(/\s+/g, ' ').slice(0, 300) + ' | errors: ' + errors.slice(-3).join(' / '));
     }
     ok(/Updated to version \d+\.\d+\.\d+/.test(wn) && /What's new/.test(wn), "after an update: what's new shown");
+    ok((await page.locator('.ub.ok .ub__ver').count()) >= 3 && /Version \d+\.\d+\.\d+ · \d+ \w{3} \d{4}/.test(wn), `what's new lists every version since the last one opened, with its date (${await page.locator('.ub.ok .ub__ver').count()} versions)`);
     await page.screenshot({ path: `${out}/21-whats-new.png` });
     // a long "What's new" must not block the panel: close button at the top, the list scrolls on its own, the panel scrolls
     const ubBox = await page.locator('.ub.ok').boundingBox();
