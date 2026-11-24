@@ -80,7 +80,7 @@
     <div class="row">
         <button class="pp-btn g-btn--primary" disabled={busy} on:click={getAllForecasts}><Icon name="refresh" size={15} /> Get forecast for all routes</button>
         {#if busy}<button class="pp-btn pp-btn--ghost" on:click={() => (signal.cancelled = true)}>Stop</button>{/if}
-        <label class="check" title="Steps Windy's time slider with the currents layer for each route: about 1–2 s per step, so this takes a while">
+        <label class="check" title="Currents come with the forecast (Open-Meteo marine). This also steps Windy's time slider with its currents layer for each route (about 1–2 s per step, so it takes a while); Windy's values then take over.">
             <input type="checkbox" bind:checked={withCurrents} /> also read currents (slow)
         </label>
         <button class="pp-btn pp-btn--ghost" on:click={() => (full = true)}><Icon name="expand" size={14} /> Full-size table</button>
@@ -107,15 +107,16 @@
     import { get } from 'svelte/store';
 
     import { IMPORT_ACCEPT, importRoute } from '../lib/formats';
-    import { computePlan, positionAt, type Route } from '../lib/model';
+    import { computePlan, currentsOn, positionAt, type Route } from '../lib/model';
     import { simulate } from '../lib/speed';
-    import { nearestSweep, routePoints, weatherAt } from '../lib/weather';
+    import { currentAt, routePoints, weatherAt } from '../lib/weather';
     import { GALE_KN, summarize, type RouteSummary } from '../lib/compare';
     import { fetchSeries, runLimited, sweep } from '../windy/forecast';
     import { activeCompareId, addToCompare, compareEtd, compareWx, planKey, route, savedRoutes, selectedUids, thresholds, vessel, workEnd, workProgress, workStart, wxPlanKey, wxSeries, wxSweepValid, type SavedRoute } from '../state';
     import DateTimeField from './DateTimeField.svelte';
     import CompareTable from './CompareTable.svelte';
     import Overlay from './Overlay.svelte';
+    import { wxAuto } from '../windy/weatherJobs';
 
     let fileInput: HTMLInputElement;
     let message = '';
@@ -144,12 +145,10 @@
     $: summaries = new Map(
         all.map(s => {
             const w = s.id === 'live' ? (liveWx ?? $compareWx.get('live')) : $compareWx.get(s.id);
+            // the same weather, weather loss and currents as the Route tab (owner's report, 2026-11-24)
             const env = {
-                wx: (p: { lat: number; lon: number }, t: number) => (w ? weatherAt(w.series, p, t) : null),
-                current: (_p: { lat: number; lon: number }, t: number) => {
-                    const c = w ? nearestSweep(w.sweep, t, 'currentKn') : null;
-                    return c && c.currentKn != null && c.currentSet != null ? { kn: c.currentKn, set: c.currentSet } : null;
-                },
+                wx: (p: { lat: number; lon: number }, t: number) => (w ? weatherAt(w.series, p, t, { climate: true }) : null),
+                current: (p: { lat: number; lon: number }, t: number) => (w && currentsOn(s.route) ? currentAt(w.series, w.sweep, p, t) : null),
             };
             return [s.id, summarize(s.route, $vessel, $thresholds, env, { etd: $compareEtd })];
         }),
@@ -259,7 +258,7 @@
                 const base = computePlan(r, get(vessel));
                 const pts = routePoints(base);
                 const res = await runLimited(
-                    pts.map(p => () => fetchSeries(p.lat, p.lon, 3, base.etd != null && base.eta != null ? { start: base.etd, end: base.eta } : undefined)),
+                    pts.map(p => () => fetchSeries(p.lat, p.lon, 3, base.etd != null && base.eta != null ? { start: base.etd, end: base.eta } : undefined, { extra: get(wxAuto).extras })),
                     6,
                     n => {
                         progress = `Route ${k + 1}/${list.length} "${r.name}": forecast ${n} / ${pts.length}…`;

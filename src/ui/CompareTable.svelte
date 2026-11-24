@@ -50,7 +50,7 @@
                         <td class={mark('cur', v)}>{sign(v.avgCurrentKn)}</td>
                         <td><b>{f(v.avgSog)}</b></td>
                         <td class="g">{f(v.avgRpm, 0)}</td>
-                        <td>{v.avgSlipPct != null ? v.avgSlipPct.toFixed(1) : '—'}</td>
+                        <td>{#if v.avgSlipPct != null}{v.avgSlipPct.toFixed(1)}{:else}<span class="sub" title="Slip needs the propeller pitch (⚙ Settings → Ship particulars) and the RPM (your RPM / speed table or typed per leg)">{v.slipWhy ?? '—'}</span>{/if}</td>
                         <td class={mark('fuel', v)}>{v.fuelT != null ? v.fuelT.toFixed(1) : '—'}</td>
                         <td class="g {mark('gale', v)}">{fmtDH(v.galeH)}</td>
                         <td class={mark('wave', v)}>{fmtDH(v.waveLimitH)}</td>

@@ -161,3 +161,56 @@ test('safe plan speed choices keep within the min / max RPM and outside barred r
     assert.ok(options.every(o => o.rpm == null || (o.rpm >= 45 && o.rpm <= 70 && !(o.rpm >= 50 && o.rpm <= 55))), options.map(o => o.rpm).join(','));
     assert.ok(options.some(o => o.rpm === 70) && options.some(o => o.rpm === 45), 'max and min RPM are choices');
 });
+
+// ---- owner's report 2026-11-24: "why sog sicw are same ... and slip is 0" ----
+
+test('weather loss: forecast estimate by default, typed allowances kept, explicit choice wins', async () => {
+    const { lossMethodOf, currentsOn } = await import('../src/lib/model');
+    const r = route3();
+    assert.equal(lossMethodOf(r), 'kwon', 'never chosen, no allowances: estimate from the forecast');
+    r.waypoints[1].allowance = 0.5;
+    assert.equal(lossMethodOf(r), 'manual', 'allowances typed in: kept');
+    r.lossMethod = 'kwon';
+    assert.equal(lossMethodOf(r), 'kwon');
+    assert.equal(currentsOn(route3()), true, 'currents on unless switched off');
+    assert.equal(currentsOn({ ...route3(), useCurrents: false }), false);
+});
+
+test('default route: head weather slows the ship (SiCW > STW), no particulars says so', () => {
+    const r = route3();
+    const v = { ...emptyVessel(), speedTable: table, lbp: 236, breadth: 42.8, draftFwd: 12, draftAft: 12, cb: 0.65 };
+    const wx = { windKn: 30, windDir: 90, hs: 4, hsDir: 90 } as WxPoint;
+    const sim = simulate(r, computePlan(r, v), v, { wx: () => wx, current: () => null });
+    assert.ok(sim.legs[0].avgLossKn > 0.3, `loss ${sim.legs[0].avgLossKn}`);
+    assert.ok(sim.legs[0].avgSog < sim.legs[0].sicw - 0.3, 'SOG below SiCW in head weather');
+    const bare = { ...emptyVessel(), speedTable: table };
+    const s2 = simulate(r, computePlan(r, bare), bare, { wx: () => wx, current: () => null });
+    assert.ok(s2.notes.some(n => /needs LBP, breadth and drafts/.test(n)), 'tells what is missing');
+    const r3 = { ...route3(), lossMethod: 'manual' as const };
+    const s3 = simulate(r3, computePlan(r3, v), v, { wx: () => wx, current: () => null });
+    assert.ok(s3.notes.some(n => /Weather loss is 0/.test(n)), 'manual with 0 allowance is said plainly');
+});
+
+test('current downloaded with the forecast is used when Windy\'s map was not read', async () => {
+    const { currentAt } = await import('../src/lib/weather');
+    const ts = [T0, T0 + 3 * H, T0 + 6 * H];
+    const series = [{ lat: 0, lon: 1, ts, model: 'ecmwf', wind: [5, 5, 5], windDir: [0, 0, 0], extra: { ts, seaH: [null, null, null], seaDir: [null, null, null], seaPer: [null, null, null], curKn: [1.5, 1.5, 1.5], curDir: [90, 90, 90], visM: [null, null, null], fetchedAt: T0 } }] as any;
+    const c = currentAt(series, new Map(), { lat: 0, lon: 1 }, T0 + 2 * H)!;
+    near(c.kn, 1.5, 1e-9);
+    near(c.set, 90, 1e-6);
+    const sweep = new Map([[T0 + 2 * H, { currentKn: 0.5, currentSet: 270 }]]);
+    near(currentAt(series, sweep, { lat: 0, lon: 1 }, T0 + 2 * H)!.kn, 0.5, 1e-9, "Windy's map reading takes over");
+    assert.equal(currentAt(series, undefined, { lat: 0, lon: 1 }, T0 + 30 * H), null, 'beyond the forecast: none');
+});
+
+test('present position: the part of the leg already sailed is not counted as a stop', async () => {
+    const { summarize } = await import('../src/lib/compare');
+    const r = route3();
+    const v = { ...emptyVessel(), speedTable: table };
+    // at 0°, 1° E (60 nm along leg 1) after 6 h: 10 kn so far
+    r.voyage = { startedAt: T0, fix: { lat: 0, lon: 1, t: T0 + 6 * H } };
+    const s = summarize(r, v, {} as any, noEnv);
+    near(s.stoppedH, 0, 0.05, 'no phantom stops');
+    near(s.steamingH, s.totalH, 0.05);
+    near(s.avgSog as number, s.distNm / s.totalH, 0.01, 'SOG = distance / time under way');
+});

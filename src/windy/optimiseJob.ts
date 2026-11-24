@@ -11,11 +11,11 @@ import { checkWaveSystem } from '../lib/circ1228';
 import { makeIsWater } from '../lib/landMask';
 import { legGeometry } from '../lib/geo';
 import { motionAt } from '../lib/motionEstimate';
-import type { Vessel } from '../lib/model';
+import { currentsOn, type Vessel } from '../lib/model';
 import { buildGrid, forecastPoints, optimise, type OptimiseEnv, type OptimiseOptions, type OptimiseResult } from '../lib/optimise';
 import { applyVersion, buildVersions, stretchTimes, type RouteVersion, type VersionId } from '../lib/optimisePlan';
 import { recordOptimisation, usage } from '../lib/usage';
-import { forecastInfo, rollPeriodFor, waveSystems, weatherAt, type WxSeries } from '../lib/weather';
+import { currentAt, forecastInfo, rollPeriodFor, waveSystems, weatherAt, type WxSeries } from '../lib/weather';
 import { plan, route, thresholds, updateRoute, vessel, workEnd, workProgress, workStart, wxSeries } from '../state';
 import { fetchSeries, runLimited } from './forecast';
 import { showPreview } from './previewLayer';
@@ -139,6 +139,8 @@ export async function runOptimise(a: number, b: number, etaOverride: number | nu
         const roughCells = new Set<string>();
         const env: OptimiseEnv = {
             wxAt: (lat, lon, t) => weatherAt(series, { lat, lon }, t),
+            // ocean currents from the forecast, as in the Route tab (owner's report, 2026-11-24)
+            currentAt: currentsOn(get(route)) ? (lat, lon, t) => currentAt(series, undefined, { lat, lon }, t) : undefined,
             isWater,
             extraCost:
                 s.avoidImo || rollMark

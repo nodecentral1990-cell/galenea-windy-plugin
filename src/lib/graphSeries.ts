@@ -20,6 +20,8 @@ export interface GraphSeries {
     /** Drawn as dots, not a line (directions) */
     dots?: boolean;
     get(r: WxRow, c: GraphCtx): number | null;
+    /** Why there is no value at all, in words (shown in the legend instead of a bare "—") */
+    why?(c: GraphCtx): string | null;
 }
 
 const v = (x: number | null | undefined): number | null => (x == null || !isFinite(x) ? null : x);
@@ -34,12 +36,13 @@ export const GRAPH_SERIES: GraphSeries[] = [
     { id: 'sog', label: 'SOG', unit: 'kn', group: 'Ship', get: r => v(r.sog ?? r.speedKn) },
     { id: 'sicw', label: 'SiCW (speed in calm water)', unit: 'kn', group: 'Ship', get: r => (r.stopped ? 0 : v(r.sicw)) },
     { id: 'loss', label: 'Weather speed loss', unit: 'kn', group: 'Ship', get: r => v(r.lossKn) },
-    { id: 'rpm', label: 'RPM (from your table)', unit: 'rpm', group: 'Ship', get: (r, c) => (r.sicw == null || r.stopped ? null : v(fromTable(c.vessel.speedTable, r.sicw)?.rpm)) },
+    { id: 'rpm', label: 'RPM (from your table)', unit: 'rpm', group: 'Ship', why: c => (!c.vessel.speedTable?.length ? 'needs the RPM / speed table' : null), get: (r, c) => (r.sicw == null || r.stopped ? null : v(fromTable(c.vessel.speedTable, r.sicw)?.rpm)) },
     {
         id: 'slip',
         label: 'Slip (from RPM and pitch)',
         unit: '%',
         group: 'Ship',
+        why: c => (!c.vessel.pitch ? 'needs the propeller pitch (Ship particulars)' : !c.vessel.speedTable?.length ? 'needs the RPM / speed table' : null),
         get: (r, c) => {
             if (r.sicw == null || r.stopped || !c.vessel.pitch) return null;
             const rpm = fromTable(c.vessel.speedTable, r.sicw)?.rpm;

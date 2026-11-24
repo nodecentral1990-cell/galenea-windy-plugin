@@ -741,6 +741,19 @@ export function weatherAt(series: WxSeries[], pos: { lat: number; lon: number },
 }
 
 /**
+ * Ocean current at a place and time for the speed over ground (owner's report, 2026-11-24: "why sog sicw are same"):
+ * Windy's own map reading when it was done (nearest within 3 h), else the current downloaded with the forecast
+ * (Open-Meteo marine). Null when neither has one. Set = the direction the current flows TOWARDS.
+ */
+export function currentAt(series: WxSeries[], sweep: Map<number, Partial<WxPoint>> | undefined, pos: { lat: number; lon: number }, t: number): { kn: number; set: number } | null {
+    const c = sweep ? nearestSweep(sweep, t, 'currentKn') : null;
+    if (c && c.currentKn != null && c.currentSet != null) return { kn: c.currentKn, set: c.currentSet };
+    const s = nearestSeries(series, pos);
+    const wx = s ? sampleSeries(s, t) : null;
+    return wx && wx.currentKn != null && wx.currentSet != null && isFinite(wx.currentKn) && isFinite(wx.currentSet) ? { kn: wx.currentKn, set: wx.currentSet } : null;
+}
+
+/**
  * Forecast points leg by leg (owner, 2026-11-19: "every time i am changing some waypoint ... i need to check the
  * weather again"): each leg gets its own evenly spaced points from its start, so after an edit the legs that did not
  * change give exactly the same points and their forecasts come from memory; only the changed legs are fetched.

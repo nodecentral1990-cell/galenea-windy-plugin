@@ -27,6 +27,8 @@ export interface RouteSummary {
     fuelT: number | null;
     /** Average slip %, from RPM × pitch (or the 0-slip speed typed per leg) against the speed through water */
     avgSlipPct: number | null;
+    /** Why there is no slip figure, in a few words (null when there is one) */
+    slipWhy: string | null;
     /** Average weather factor, kn: minus the average weather speed loss */
     avgWxKn: number | null;
     /** First and last waypoint */
@@ -71,6 +73,7 @@ export function summarize(route: Route, vessel: Vessel, th: Thresholds, env: Env
         avgRpm: null,
         fuelT: sim.totalFuelT,
         avgSlipPct: null,
+        slipWhy: null,
         avgCurrentKn: null,
         avgWxKn: null,
         dep: r.waypoints[0] ? { lat: r.waypoints[0].lat, lon: r.waypoints[0].lon } : null,
@@ -123,6 +126,9 @@ export function summarize(route: Route, vessel: Vessel, th: Thresholds, env: Env
     }
     out.avgRpm = hRpm > 0 ? wRpm / hRpm : null;
     out.avgSlipPct = hSlip > 0 ? wSlip / hSlip : null;
+    if (out.avgSlipPct == null) out.slipWhy = !vessel.pitch ? 'needs pitch' : 'needs RPM';
+    // say plainly when the weather loss is not being worked out (owner's report, 2026-11-24: "sog sicw are same")
+    for (const n of sim.notes) if (/^Weather loss (is 0|estimate needs)/.test(n)) out.problems.push(n);
 
     // Weather exposure along the stepped track (stops included: the ship is still out there)
     const roll = rollPeriodFor(vessel).value;

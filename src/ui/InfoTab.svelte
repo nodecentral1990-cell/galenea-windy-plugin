@@ -44,7 +44,7 @@
     <tr><td><b>ICON</b></td><td>German weather service (DWD)</td><td>Whole world</td><td>13 km</td><td>~7 days</td><td>Another good cross-check.</td></tr>
     <tr><td><b>AROME, ICON-EU, UKV …</b></td><td>National services</td><td>One region only</td><td>1–7 km</td><td>~1–3 days</td><td>Near the coast and port approaches: local winds, sea breezes, squalls.</td></tr>
     <tr><td><b>ECMWF-WAM</b></td><td>European Centre</td><td>Oceans</td><td></td><td>~10 days</td><td>Waves and swell. This plugin uses it.</td></tr>
-    <tr><td><b>CMEMS</b></td><td>Copernicus Marine (EU)</td><td>Oceans</td><td></td><td>a few days</td><td>Windy's currents layer, read by "Read currents".</td></tr>
+    <tr><td><b>CMEMS</b></td><td>Copernicus Marine (EU)</td><td>Oceans</td><td></td><td>a few days</td><td>Windy's currents layer, read by "Read currents" (optional; the currents used for SOG normally come with the forecast from Open-Meteo marine, Météo-France SMOC).</td></tr>
 </table></div></details>
 <details class="gd"><summary>Which one should a mariner use?</summary><div class="gd__b"><ul>
     <li><b>Ocean passage: ECMWF.</b> Then look at <b>GFS</b> for the same days: if they agree, more confidence; if they disagree a lot, the forecast is uncertain: keep bigger margins.</li>
@@ -174,8 +174,8 @@
         below (LBP × draft). High-sided ships and ships in ballast drift more. Typical result 2–6 % of the wind
         speed.</li>
     <li>Windage height and Cb have typical values per ship type; enter your own in ⚙ Settings → Ship particulars.</li>
-    <li>Not included: wave drift (roughly 0.3–1 % of the wind speed more in a big sea). The current comes from
-        Windy's currents layer.</li>
+    <li>Not included: wave drift (roughly 0.3–1 % of the wind speed more in a big sea). The current comes with the
+        forecast (Open-Meteo marine model), or from Windy's currents layer where it was read.</li>
 </ul></div></details>
 <details class="gd"><summary>🧊 Cold weather, ice and spray icing</summary><div class="gd__b"><ul>
     <li><b>Windy has no sea-ice data</b> (no ice edge, concentration or thickness; Windy's "icing" layer is icing for

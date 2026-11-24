@@ -60,23 +60,27 @@
 <div class="grid">
     <label
         >Weather speed loss
-        <select value={$route.lossMethod ?? 'manual'} on:change={e => updateRoute(r => (r.lossMethod = selLoss(e)))}>
-            <option value="manual">My allowance per leg (Route table)</option>
+        <select value={lossMethodOf($route)} on:change={e => updateRoute(r => (r.lossMethod = selLoss(e)))}>
             <option value="kwon">Estimate from the forecast (Kwon)</option>
+            <option value="manual">My allowance per leg (Route table)</option>
         </select>
     </label>
     <label class="check">
-        <input type="checkbox" checked={!!$route.useCurrents} on:change={setCurrents} />
+        <input type="checkbox" checked={currentsOn($route)} on:change={setCurrents} />
         Include ocean currents
     </label>
 </div>
-<div class="pp-note g-hl">Currents come from Windy's map layer (Weather → Read currents). <Hint title="How currents work"><p><b>How currents work:</b> Windy gives currents only as a map layer. In the Weather tab press <b>Get forecast</b>, then
-    <b>Read currents</b> (it steps through the voyage on the currents layer). Tick <b>Include ocean currents</b> here and the
-    speed over ground and ETA use them. {#if currentsRead}Currents read: {currentsRead} times.{:else}<span class="pp-err">No currents read yet.</span>{/if}</p></Hint></div>
-{#if ($route.lossMethod ?? 'manual') === 'kwon'}
-    <div class="pp-note g-hl"><span class="pp-err">A rough guide: coefficients not yet checked against the original paper.</span> <Hint title="Weather loss estimate"><p>Estimate uses the forecast wind and significant wave height against your heading, LBP, breadth, drafts, block
-        coefficient, condition and ship type (Ship particulars, above). <b>Its coefficients have not yet been checked against the original
-        paper: treat it as a rough guide.</b> {#if !$weatherReady}<span class="pp-err">Get the forecast in the Weather tab first.</span>{/if}</p></Hint></div>
+<div class="pp-note g-hl">Currents come with the forecast (Open-Meteo marine model, about 8 km, updated daily); Windy's own currents map takes over where it was read. <Hint title="How currents work"><p><b>How currents work:</b> the ocean current along the route is downloaded with the forecast,
+    so nothing needs pressing. If you also read Windy's currents layer (Weather → Read currents, optional), Windy's values are used for those times.
+    With <b>Include ocean currents</b> ticked (the normal setting) the speed over ground and ETA use them: SOG = speed through the water + the current along the track.
+    Model currents can be wrong near coasts, in eddies and in tidal streams: check them against the ship's log and GPS. {#if currentsRead}Windy's map read: {currentsRead} times.{/if}</p></Hint></div>
+{#if lossMethodOf($route) === 'kwon'}
+    <div class="pp-note g-hl">A rough estimate for a typical hull, not your ship's own data. <Hint title="Weather loss estimate"><p>Estimate uses the forecast wind and significant wave height against your heading, LBP, breadth, drafts, block
+        coefficient, condition and ship type (Ship particulars). Method: Kwon (2008), with the coefficients as published in later papers.
+        <b>Treat it as rough</b>: compare it with your ship's experience; if you know better, choose "My allowance per leg".
+        {#if !lossInputs($vessel)}<span class="pp-err">Needs LBP, breadth and drafts in Ship particulars: until then the weather loss is 0.</span>{/if}
+        {#if !$weatherReady}<span class="pp-err">Get the forecast in the Weather tab first.</span>{/if}</p></Hint></div>
+    {#if !lossInputs($vessel)}<div class="pp-note pp-err">Weather loss needs LBP, breadth and drafts (Ship particulars): until they are filled in it is 0.</div>{/if}
 {/if}
 {/if}
 
@@ -85,7 +89,8 @@
     /** Show only this piece of the group (a gear beside a function); null = all of it */
     export let part: string | null = null;
     import Hint from './base/Hint.svelte';
-    import type { BarredRpm, SpeedRow } from '../lib/model';
+    import { currentsOn, lossMethodOf, type BarredRpm, type SpeedRow } from '../lib/model';
+    import { lossInputs } from '../lib/speed';
     import { planKey, route, updateRoute, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
     import { derived } from 'svelte/store';
 

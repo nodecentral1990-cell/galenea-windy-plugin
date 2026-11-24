@@ -10,7 +10,7 @@
 //              heights) and using whichever of wind or waves gives the larger loss.
 
 import { norm180, norm360 } from './geo';
-import type { BarredRpm, LegCalc, PlanCalc, Route, SpeedRow, TrackPoint, Vessel } from './model';
+import { lossMethodOf, type BarredRpm, type LegCalc, type PlanCalc, type Route, type SpeedRow, type TrackPoint, type Vessel } from './model';
 import { beaufort, relFrom, type WxPoint } from './weather';
 import { estimateLeeway, shipTypeOf } from './shipTypes';
 
@@ -327,7 +327,7 @@ export function simulate(route: Route, base: PlanCalc, vessel: Vessel, env: Env,
     if (base.etd == null || base.legs.length === 0) {
         return { plan: base, legs: [], totalFuelT: null, notes };
     }
-    const method = route.lossMethod ?? 'manual';
+    const method = lossMethodOf(route);
     const li = method === 'kwon' ? lossInputs(vessel) : null;
     if (method === 'kwon' && !li) notes.push('Weather loss estimate needs LBP, breadth and drafts (⚙ Settings → Ship particulars): using your allowances instead.');
     if (method === 'kwon' && li?.cbTypical) notes.push(`Block coefficient not set: the typical ${li.cb} for this ship type is used.`);
@@ -422,6 +422,15 @@ export function simulate(route: Route, base: PlanCalc, vessel: Vessel, env: Env,
         }
         leg.arriveMs = t;
         leg.hours = sumH;
+        // The leg with the present position: the part already sailed (leg start to the fix, at the average rate) counts
+        // too, or it would look like a stop and the averages (SOG, fuel) would be wrong (owner's report, 2026-11-24)
+        let sailedH = 0;
+        let sailedRate = 0;
+        if (fromFix) {
+            const t0 = (base.etd as number) + base.delayAtStartH * HOUR;
+            sailedRate = fx.alongNm / Math.max(1e-6, (fx.t - t0) / HOUR);
+            sailedH = fx.sNm / Math.max(1e-6, sailedRate);
+        }
         leg.sog = sumH > 0 ? (leg.distNm - (fromFix ? fx.sNm : 0)) / sumH : leg.sog;
         if (fromFix && leg.sog > 0) leg.departMs = (fx.t as number) - (fx.sNm / leg.sog) * HOUR;
         const avgLoss = sumH ? sumLoss / sumH : 0;
@@ -431,17 +440,21 @@ export function simulate(route: Route, base: PlanCalc, vessel: Vessel, env: Env,
         const tv = fromTable(vessel.speedTable, sicwUsed);
         const holdSicw = target != null ? sicwUsed : planned + avgLoss - avgCur;
         const hv = fromTable(vessel.speedTable, holdSicw);
+        const allH = sumH + sailedH;
+        const sv = sailedH > 0 ? fromTable(vessel.speedTable, sailedRate) : null;
+        const fuelAhead = tv?.fuel != null ? (tv.fuel * sumH) / 24 : null;
+        const fuelSailed = sailedH > 0 ? (sv?.fuel != null ? (sv.fuel * sailedH) / 24 : null) : 0;
         out.push({
             legIdx: i,
-            sicw: sicwUsed,
+            sicw: allH > 0 ? (sicwUsed * sumH + sailedRate * sailedH) / allH : sicwUsed,
             rpm: tv?.rpm ?? null,
             fuelPerDay: tv?.fuel ?? null,
             outsideTable: !!tv?.outside,
-            avgLossKn: avgLoss,
-            avgCurAlong: avgCur,
-            avgSog: leg.sog,
-            hours: sumH,
-            fuelT: tv?.fuel != null ? (tv.fuel * sumH) / 24 : null,
+            avgLossKn: allH > 0 ? (avgLoss * sumH) / allH : avgLoss,
+            avgCurAlong: allH > 0 ? (avgCur * sumH) / allH : avgCur,
+            avgSog: allH > 0 && sailedH > 0 ? leg.distNm / allH : leg.sog,
+            hours: allH,
+            fuelT: fuelAhead != null && fuelSailed != null ? fuelAhead + fuelSailed : null,
             sicwToHold: holdSicw,
             rpmToHold: hv?.rpm ?? null,
             holdOutsideTable: !!hv?.outside,
@@ -467,7 +480,8 @@ export function simulate(route: Route, base: PlanCalc, vessel: Vessel, env: Env,
         const h = l.rpmToHold != null && Math.round(l.rpmToHold) !== Math.round(l.rpm ?? -1) ? rpmAdviceText(vessel, l.rpmToHold, `needed to hold the ${legs[l.legIdx]?.targetSog != null ? 'ETA' : 'planned speed'} in this weather`) : '';
         if (h) notes.push(`${wp}: ${h}`);
     }
-    if (method === 'kwon' && li) notes.push('Weather loss: Kwon estimate. Its coefficients have not yet been checked against the original paper: treat as rough.');
+    if (method === 'kwon' && li) notes.push('Weather loss is estimated from the forecast wind and waves (Kwon method, as published in later papers): a rough figure for a typical hull, not your ship\'s own data. Compare it with your experience; to type your own allowance per leg instead: ⚙ Speed, RPM and fuel → Weather loss.');
+    if (method === 'manual' && out.every(l => Math.abs(l.avgLossKn) < 1e-9)) notes.push('Weather loss is 0: your allowance per leg is 0, so speed through the water = speed in calm water. For an estimate from the forecast: ⚙ Speed, RPM and fuel → Weather loss → estimate from the forecast.');
     const plan: PlanCalc = {
         ...base,
         legs,

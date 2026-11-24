@@ -114,7 +114,7 @@
             <span class="g-card__title">Weather table</span>
             <Hint title="Reading the table" width={360}>
                 <p>Click a row to move Windy's time slider and the map to that time. Relative directions: 0° = from ahead.</p>
-                <p><b>SOG = SiCW − weather loss + current</b> along the track{$route.useCurrents ? '' : ' (currents are switched off: the gear beside this, Currents)'}. {hasCurrents ? "" : "Current \"—\" = not read yet (press Read currents)."} Currents belong to the times they were read: after changing ETD, speeds or fixed ETAs, read them again.</p>
+                <p><b>SOG = SiCW − weather loss + current</b> along the track{currentsOn($route) ? '' : ' (currents are switched off: the gear beside this, Weather loss and currents)'}. Currents come with the forecast (Open-Meteo marine model); Windy's currents map takes over where it was read. {hasCurrents ? "" : "Current \"—\" = none in the forecast there."}</p>
                 <p>Amber / red cells: your limits (the gear beside this). Chips: IMO MSC.1/Circ.1228 checks, advisory only: <span class="chip parametric">PR</span> parametric, <span class="chip synchronous">SR</span> synchronous, <span class="chip highWaves">HW</span> high waves, <span class="chip surf">BR</span> broaching. No warning does not mean safe.</p>
                 <p>Faded rows are in the past. Roll period: {rollTxt}.</p>
             </Hint>
@@ -150,6 +150,7 @@
 {/if}
 
 <script lang="ts">
+    import { currentsOn } from '../lib/model';
     import store from '@windy/store';
     import { onDestroy } from 'svelte';
     import { FORECAST_OLD_H, forecastAge } from '../lib/voyageStrip';

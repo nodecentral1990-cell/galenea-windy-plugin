@@ -8,7 +8,7 @@ import { logEvent } from '../lib/activityLog';
 import { checkWaveSystem } from '../lib/circ1228';
 import { isLand } from '../lib/landMask';
 import { motionAt } from '../lib/motionEstimate';
-import type { PlanCalc } from '../lib/model';
+import { currentsOn, lossMethodOf, type PlanCalc } from '../lib/model';
 import { driftOf, lossInputs, weatherLossKn } from '../lib/speed';
 import { estimateLeeway } from '../lib/shipTypes';
 import { applySpeedPlan, farFromLand, speedOptions, speedPlan, trackOf, type Hazard, type SpeedPlanResult } from '../lib/speedPlan';
@@ -133,7 +133,7 @@ export async function runSpeedPlan(arriveMode: 'planned' | 'earliest' | 'own', o
         const startMs = p.fix ? p.fix.t : p.etd + (p.delayAtStartH ?? 0) * 3600_000;
         const planned = (sNm: number) => sm.legs.find(l => l.legIdx === legAt(p, sNm))?.sicw ?? p.legs[legAt(p, sNm)]?.calmSpeed ?? r.defaultSpeed;
         const { options, barredLeftOut } = speedOptions(v, planned(startNm));
-        const li = (r.lossMethod ?? 'manual') === 'kwon' ? lossInputs(v) : null;
+        const li = lossMethodOf(r) === 'kwon' ? lossInputs(v) : null;
         const roll = rollPeriodFor(v).value;
         const want = new Set(avoided.flatMap(k => HITS[k]));
         const hazards = (wx: Parameters<typeof checkLimits>[0], heading: number, stw: number): Hazard[] => {
@@ -179,7 +179,7 @@ export async function runSpeedPlan(arriveMode: 'planned' | 'earliest' | 'own', o
             canBeAt: (lat, lon) => farFromLand(lat, lon, s.minLandNm, isLand),
         });
         if (barredLeftOut) res.notes.unshift(`Barred RPM ranges left out (⚙ Settings → Speed, RPM and fuel).`);
-        if (r.useCurrents) res.notes.push('Ocean currents are not included in the speed plan (the route figures after you take it do include them).');
+        if (currentsOn(r)) res.notes.push('Ocean currents are not included in the speed plan (the route figures after you take it do include them).');
         if (r.waypoints.some((w, i) => i > 0 && (w.delayH ?? 0) > 0)) res.notes.push('Planned stops at waypoints are not included in the comparison; taking the plan replaces them with its own stops.');
         // drift estimate where the plan stops
         const leeway = v.leewayPct ?? estimateLeeway(v).pct;

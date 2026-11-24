@@ -10,8 +10,8 @@
 </div>
 <SettingsFold host="speed" />
 <div class="pp-note set">
-    Weather loss: <b>{($route.lossMethod ?? 'manual') === 'kwon' ? 'estimate from the forecast (Kwon, rough)' : 'your allowance per leg'}</b> ·
-    currents <b>{$route.useCurrents ? 'included' : 'not included'}</b> · table: <b>{rows.length} rows</b>
+    Weather loss: <b>{lossMethodOf($route) === 'kwon' ? 'estimate from the forecast (Kwon, rough)' : 'your allowance per leg'}</b> ·
+    currents <b>{currentsOn($route) ? 'included' : 'not included'}</b> · table: <b>{rows.length} rows</b>
     <Gear host="speed-line" line chips={[{ id: 'speed', part: 'loss', label: 'Weather loss and currents' }, { id: 'speed', part: 'table', label: 'RPM / speed / fuel table' }]} />
 </div>
 <SettingsFold host="speed-line" />
@@ -70,6 +70,7 @@
 </div>
 
 <script lang="ts">
+    import { currentsOn, lossMethodOf } from '../lib/model';
     import Gear from './base/Gear.svelte';
     import SettingsFold from './settings/SettingsFold.svelte';
     import Hint from './base/Hint.svelte';

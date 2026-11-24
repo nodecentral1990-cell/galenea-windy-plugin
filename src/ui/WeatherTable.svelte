@@ -23,7 +23,7 @@
                 <th class="g" title="Course over ground">Crs</th>
                 <th title="Speed in calm water used: your planned speed, or what a fixed ETA needs">SiCW</th>
                 <th title="Speed lost to weather (your allowance, or the estimate chosen in ⚙ Settings)">Wx loss</th>
-                <th title="Ocean current: speed (kn) and the direction it sets TOWARDS (Windy's currents layer)">Current</th>
+                <th title="Ocean current: speed (kn) and the direction it sets TOWARDS (downloaded with the forecast, Open-Meteo marine; Windy's currents layer where read)">Current</th>
                 <th title="Speed over ground">SOG</th>
                 {#if hasStops}<th title="Drift while stopped: speed and direction towards (current + wind drift)">Drift</th>{/if}
                 <th class="g">kn</th><th title="Direction it comes from, °T (relative to the bow)">from</th><th>Gust</th><th>Bf</th>

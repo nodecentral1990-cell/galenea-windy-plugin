@@ -10,6 +10,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.31.0',
+        date: '2026-11-24',
+        notes: [
+            'Speeds corrected (your report: SOG was the same as SiCW and the weather loss was 0). The weather loss is now worked out from the forecast wind and waves by default (Kwon method, a rough estimate for a typical hull; Settings → Speed, RPM and fuel → Weather loss, where you can still type your own allowance per leg). It needs LBP, breadth and drafts in Ship particulars, and says so if they are missing.',
+            'Ocean currents are now in the speed over ground and the ETA by default: they come with the downloaded forecast (Open-Meteo marine, about 8 days ahead), so nothing needs pressing. Before, only currents read from Windy\'s map were used, and that reading is off by default. Windy\'s map values still take over where they are read. Model currents can be wrong near coasts and in tidal streams: check them against the log and GPS.',
+            'With a present position entered, the part of the leg already sailed was missing from the time under way: it showed as "stops" in Compare and made the average SOG too high. Fixed. Compare and the route optimisation now use the same weather loss and currents as the Route tab.',
+            'Slip: where it cannot be worked out, the graph and Compare now say "needs the propeller pitch (Ship particulars)" instead of a bare "—".',
+        ],
+    },
+    {
         version: '0.30.0',
         date: '2026-11-24',
         notes: [

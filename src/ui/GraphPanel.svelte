@@ -67,7 +67,7 @@
                             {#each g.items as it}
                                 <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
                                 <label class="gp__li gp__sw gp__sw--sm" class:off={it.hidden} title={it.hidden ? 'Off: click to show' : 'Click to hide for a moment (stays in the list box)'} on:click|stopPropagation
-                                    ><input type="checkbox" checked={!it.hidden} on:change={() => toggleHidden(g.slot, it.s.id)} /><span class="knob" /><i style="background:{it.color}" class:dot={it.s.dots} />{it.s.label.split(' (')[0]} <b>{fmtVal(valueAt(it.vals, readT), it.s)}</b></label
+                                    ><input type="checkbox" checked={!it.hidden} on:change={() => toggleHidden(g.slot, it.s.id)} /><span class="knob" /><i style="background:{it.color}" class:dot={it.s.dots} />{it.s.label.split(' (')[0]} {#if it.why}<b class="gp__why">{it.why}</b>{:else}<b>{fmtVal(valueAt(it.vals, readT), it.s)}</b>{/if}</label
                                 >
                             {/each}
                             {#if g.extra.length}<span class="gp__li gp__muted">({g.extra.map(u => `${unitName(u)} ${fmtRange(g.plan.ranges[u])}`).join(' · ')}, no axis)</span>{/if}
@@ -179,6 +179,8 @@
         vals: (number | null)[];
         /** switched off for a moment (legend switch) */
         hidden: boolean;
+        /** no value at all: why, in words */
+        why: string | null;
     }
     interface Graph {
         slot: number;
@@ -191,7 +193,12 @@
         .map((ids, slot) => {
             const sorted = GRAPH_SERIES.filter(s => ids.includes(s.id));
             const hid = st.hidden[slot] ?? [];
-            const items = sorted.map((s, k) => ({ s, color: COLORS[k % COLORS.length], vals: rows.map(r => s.get(r, ctx)), hidden: hid.includes(s.id) }));
+            const items = sorted.map((s, k) => {
+                const vals = rows.map(r => s.get(r, ctx));
+                // no value anywhere and a known reason: say it in words, not "—" (owner's report, 2026-11-24)
+                const why = rows.length && vals.every(x => x == null) ? (s.why?.(ctx) ?? null) : null;
+                return { s, color: COLORS[k % COLORS.length], vals, hidden: hid.includes(s.id), why };
+            });
             const shown = items.filter(it => !it.hidden);
             const values: Record<string, (number | null)[]> = {};
             for (const it of shown) values[it.s.id] = it.vals;
@@ -596,6 +603,10 @@
     }
     .gp__plots {
         cursor: crosshair;
+    }
+    .gp__why {
+        color: #ffb74d;
+        font-weight: 600;
     }
     .gp__legend {
         height: 17px;

@@ -6,9 +6,9 @@ import type { GlyphStyle } from './lib/glyphStyles';
 import { fullFlagColors, type FlagColors } from './lib/shipGlyph';
 import { derived, readable, writable, type Writable } from 'svelte/store';
 
-import { computePlan, emptyVessel, newRoute, newWaypoint, type Route, type Vessel } from './lib/model';
-import { defaultThresholds, nearestSweep, weatherAt, type Thresholds, type WxPoint, type WxSeries } from './lib/weather';
-import { simulate, type Current, type SimResult } from './lib/speed';
+import { computePlan, currentsOn, emptyVessel, newRoute, newWaypoint, type Route, type Vessel } from './lib/model';
+import { currentAt, defaultThresholds, weatherAt, type Thresholds, type WxPoint, type WxSeries } from './lib/weather';
+import { simulate, type SimResult } from './lib/speed';
 import type { ShipStyle } from './lib/shipSymbols';
 
 const KEY = 'windy-plugin-passage-plan:v1';
@@ -188,12 +188,6 @@ export function insertWaypoint(beforeIndex: number, lat: number, lon: number): v
     });
 }
 
-/** Current at a time from the map-layer readings (nearest reading within 3 h). */
-function currentFrom(sweep: Map<number, Partial<WxPoint>>, t: number): Current | null {
-    const best = nearestSweep(sweep, t, 'currentKn');
-    return best && best.currentKn != null && best.currentSet != null ? { kn: best.currentKn, set: best.currentSet } : null;
-}
-
 /**
  * The plan used everywhere: stepped along the route with weather loss, currents and planned
  * stops (weather only once it has been fetched for this route and these times).
@@ -205,7 +199,7 @@ export const sim = derived(
         return simulate($route, $base, $vessel, {
             // beyond the forecast the usual weather of the month (climate, marked C), so the ETA is not a calm-sea guess
             wx: (p, t) => (wxOk ? weatherAt($series, p, t, { climate: true }) : null),
-            current: (_p, t) => ($route.useCurrents && wxOk ? currentFrom($sweep, t) : null),
+            current: (p, t) => (currentsOn($route) && wxOk ? currentAt($series, $sweep, p, t) : null),
         });
     },
 );

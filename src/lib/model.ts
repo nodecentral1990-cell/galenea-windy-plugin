@@ -44,9 +44,11 @@ export interface Route {
     etd: number | null;
     /** Wanted ETA at the last waypoint (used in 'eta' mode), UTC ms */
     eta: number | null;
-    /** How weather slows the ship: 'manual' = your allowance per leg, 'kwon' = estimate from forecast */
+    /** How weather slows the ship: 'manual' = your allowance per leg, 'kwon' = estimate from forecast. Not set = the
+     * forecast estimate, unless allowances were typed in (see lossMethodOf) */
     lossMethod?: 'manual' | 'kwon';
-    /** Add ocean currents (read from Windy's currents layer) to the speed over ground */
+    /** Add ocean currents (downloaded with the forecast, or read from Windy's currents layer) to the speed over ground.
+     * Not set = on (owner, 2026-11-24); only an explicit false switches them off */
     useCurrents?: boolean;
     /** Track colour on the map */
     color?: string;
@@ -643,3 +645,16 @@ export function zoneOffsetMin(route: Route, legIdx: number, lon: number): number
     }
     return Math.round(lon / 15) * 60;
 }
+
+/**
+ * How weather slows the ship on this route (owner's report, 2026-11-24: "why sog sicw are same"): the user's choice;
+ * if never chosen, the estimate from the forecast, unless allowances were typed in per leg (then those are kept).
+ */
+export function lossMethodOf(r: Route): 'manual' | 'kwon' {
+    if (r.lossMethod) return r.lossMethod;
+    return r.waypoints.some(w => (w.allowance || 0) !== 0) ? 'manual' : 'kwon';
+}
+
+/** Currents in the speed over ground: on unless switched off (owner, 2026-11-24) */
+export const currentsOn = (r: Route): boolean => r.useCurrents !== false;
+
