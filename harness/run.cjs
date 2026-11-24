@@ -608,6 +608,17 @@ async function go(page, name) {
         await md.locator('[data-g="glyph-style"] select').selectOption('rings');
         await page.waitForTimeout(400);
         ok((await page.locator('.pp-glyph--ring').count()) === 0 && (await page.locator('.pp-glyph').count()) > 0, 'the old rings can still be chosen (Settings → Map display → Drawn as)');
+        // every one of the 11 designs can be chosen and draws (owner, 2026-11-23)
+        const ids = await md.locator('[data-g="glyph-style"] select option').evaluateAll(os => os.map(o => o.value));
+        const bad = [];
+        for (const id of ids) {
+            await md.locator('[data-g="glyph-style"] select').selectOption(id);
+            await page.waitForTimeout(250);
+            const st = await page.evaluate(() => { const g = [...document.querySelectorAll('.pp-glyph')]; return { n: g.length, nan: g.some(x => /NaN|undefined/.test(x.innerHTML)) }; });
+            if (!st.n || st.nan) bad.push(`${id}: ${st.n} symbols${st.nan ? ', NaN' : ''}`);
+            await page.screenshot({ path: `${out}/08e-style-${id}.png`, clip: { x: 380, y: 140, width: 560, height: 560 } });
+        }
+        ok(ids.length === 11 && bad.length === 0, `all 11 ship weather designs selectable and drawn (${ids.join(', ')})${bad.length ? ': ' + bad.join('; ') : ''}`);
         await md.locator('[data-g="glyph-style"] select').selectOption('ring');
         await page.waitForTimeout(400);
         await go(page, 'Weather');

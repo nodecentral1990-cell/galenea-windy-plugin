@@ -10,6 +10,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.30.0',
+        date: '2026-11-24',
+        notes: [
+            'All eleven designs for the weather on the ship symbols can now be chosen (Settings → Map display → "Drawn as"): 1 one ring (default), 0 the rings used before 0.29, 2 flags side by side, 3 wave rose, 4 data card beside the ship, 5 biggest wave big, 6 wave fronts, 7 station plot, 8 bars, 9 quiet (numbers when you point at the ship), 10 darts. The card and bar designs need more room, so fewer ships carry weather on the map.',
+        ],
+    },
+    {
         version: '0.29.0',
         date: '2026-11-23',
         notes: [

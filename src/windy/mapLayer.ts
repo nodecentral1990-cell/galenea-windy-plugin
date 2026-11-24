@@ -7,7 +7,8 @@ import { map } from '@windy/map';
 import { fmtLat, fmtLon, fmtTime } from '../lib/format';
 import { legPolyline } from '../lib/geo';
 import type { PlanCalc, Route, ShipPosition } from '../lib/model';
-import { glyphRingSvg, glyphSvg, GLYPH_SIZE, type FlagColors, type ShipGlyph } from '../lib/shipGlyph';
+import { GLYPH_SIZE, type FlagColors, type ShipGlyph } from '../lib/shipGlyph';
+import { glyphStyleSvg, type GlyphStyle } from '../lib/glyphStyles';
 import { shipSymbolSize, shipSymbolSvg, type ShipStyle } from '../lib/shipSymbols';
 
 export interface LayerCallbacks {
@@ -44,6 +45,8 @@ const HIT_PX = 10;
 const GLYPH_GAP_PX = 90;
 /** The "one ring" symbol is about half the size: ships with weather can be closer */
 const GLYPH_GAP_RING_PX = 70;
+/** The card and bar styles are wide (the table sits beside the ship) */
+const GLYPH_GAP_CARD_PX = 170;
 
 
 const isAdditive = (ev: MouseEvent | undefined) => !!ev && (ev.ctrlKey || ev.metaKey);
@@ -382,7 +385,7 @@ export class RouteLayer {
         showArrows = true,
         style: ShipStyle = 'classic',
         colors: Partial<FlagColors> = {},
-        glyphKind: 'ring' | 'rings' = 'ring',
+        glyphKind: GlyphStyle = 'ring',
     ): void {
         this.lastShips = [positions, now, zoneLabel, glyph, showArrows, style, colors, glyphKind];
         const S = shipSymbolSize(style);
@@ -390,16 +393,18 @@ export class RouteLayer {
         const G = GLYPH_SIZE;
         // Declutter: weather only on ships at least GLYPH_GAP_PX apart on screen (redone on zoom)
         let lastPt: L.Point | null = null;
+        // room between ships with weather: the old rings and the cards / bars need more than the small styles
+        const gap = glyphKind === 'rings' ? GLYPH_GAP_PX : glyphKind === 'card' || glyphKind === 'bars' ? GLYPH_GAP_CARD_PX : GLYPH_GAP_RING_PX;
         const roomFor = (p: ShipPosition) => {
             const q = map.latLngToContainerPoint([p.lat, p.lon]);
-            if (lastPt && Math.hypot(q.x - lastPt.x, q.y - lastPt.y) < (glyphKind === 'ring' ? GLYPH_GAP_RING_PX : GLYPH_GAP_PX)) return false;
+            if (lastPt && Math.hypot(q.x - lastPt.x, q.y - lastPt.y) < gap) return false;
             lastPt = q;
             return true;
         };
         const wx = (g: ShipGlyph | null, p: ShipPosition, shipSize: number, always = false) => {
             if (!g || !showArrows) return '';
             if (!always && !roomFor(p)) return '';
-            return `<div class="pp-glyph-wrap" style="position:absolute;left:${shipSize / 2 - G / 2}px;top:${shipSize / 2 - G / 2}px">${(glyphKind === 'ring' ? glyphRingSvg : glyphSvg)(g, G, p.lat < 0, colors)}</div>`;
+            return `<div class="pp-glyph-wrap" style="position:absolute;left:${shipSize / 2 - G / 2}px;top:${shipSize / 2 - G / 2}px">${glyphStyleSvg(glyphKind, g, G, p.lat < 0, colors, zoneLabel(p))}</div>`;
         };
         this.ships.forEach(s => s.remove());
         this.ships = positions.map(p => {

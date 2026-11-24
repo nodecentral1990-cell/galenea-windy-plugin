@@ -42,13 +42,13 @@
     <input type="checkbox" bind:checked={$shipWeather} />
     Show SWH, sea, swell 1, swell 2 and wind on the ship symbols (after "Get forecast" in the Weather tab)
 </label>
-<label class="check sub" data-g="glyph-style">
-    Drawn as
-    <select bind:value={$glyphStyle}>
-        <option value="ring">one ring: arrow heads, height / period outside, barb on the ship</option>
-        <option value="rings">rings: a flag per wave in its own ring, barb outside (before 0.29)</option>
+<div class="check sub gstyle" data-g="glyph-style">
+    <label for="pp-glyph-style">Drawn as</label>
+    <select id="pp-glyph-style" bind:value={$glyphStyle}>
+        {#each GLYPH_STYLES as o}<option value={o.id}>{o.no}. {o.name}</option>{/each}
     </select>
-</label>
+    <Hint title="How the weather is drawn on the ships"><p>The eleven designs of the PDF "Ship weather symbol: 10 ways to show it" (0 = the rings used before 0.29, 1 = one ring, the default). All show where the wind and waves come FROM, heights as plain numbers and periods as "7s"; red = a limit broken, amber = an alert. The card and bar styles need more room, so fewer ships carry weather on the map.</p></Hint>
+</div>
 <div class="swatches">
         <span class="pp-note">Flag colours (map symbols, polar diagram and ship window):</span>
         {#each FLAG_KINDS as [k, label]}
@@ -91,6 +91,8 @@
 {/if}
 
 <script lang="ts">
+    import Hint from './base/Hint.svelte';
+    import { GLYPH_STYLES } from '../lib/glyphStyles';
     /** Show only this piece of the group (a gear beside a function); null = all of it */
     export let part: string | null = null;
     import { FLAG_PALETTE, type FlagColors } from '../lib/shipGlyph';

@@ -2,6 +2,7 @@
 // Local storage stays on this computer and browser only; "Save ship profile" writes a file
 // the user can carry to another computer.
 
+import type { GlyphStyle } from './lib/glyphStyles';
 import { fullFlagColors, type FlagColors } from './lib/shipGlyph';
 import { derived, readable, writable, type Writable } from 'svelte/store';
 
@@ -372,7 +373,7 @@ export const placesLayers = persisted<PlacesLayers>('placesLayers', { ports: fal
 export const climateOn = persisted<boolean>('climateOn', true);
 
 /** How the weather is drawn on the ship symbols (owner, 2026-11-23: "one ring"; the old rings kept as a choice) */
-export const glyphStyle = persisted<'ring' | 'rings'>('glyphStyle', 'ring');
+export const glyphStyle = persisted<GlyphStyle>('glyphStyle', 'ring');
 
 /** Sea areas and limits on the map (owner, 2026-11-22): ECAs, MARPOL special areas by annex, distance-from-land lines */
 export interface SeaAreaLayers {

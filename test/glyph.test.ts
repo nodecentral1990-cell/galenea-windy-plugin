@@ -195,3 +195,26 @@ test('one ring (owner 2026-11-23): arrow heads on one ring, height/period boxes 
         assert.ok(!(a[0] < b[0] + b[2] && b[0] < a[0] + a[2] && a[1] < b[1] + b[3] && b[1] < a[1] + a[3]), 'label boxes overlap');
     }
 });
+
+test('all 11 ship weather styles draw (owner 2026-11-23: "have all the options available for the user to select")', async () => {
+    const { GLYPH_STYLES, glyphStyleSvg } = await import('../src/lib/glyphStyles');
+    const g = {
+        swh: { dir: 220, h: 3.2, period: 7, level: 0 as const },
+        sea: { dir: 200, h: 2.2, period: 6, level: 1 as const },
+        swell: { dir: 300, h: 2.4, period: 8, level: 2 as const },
+        swell2: { dir: 170, h: 0.8, period: 7, level: 0 as const },
+        wind: { dir: 210, kn: 25, level: 0 as const },
+        imo: false,
+    };
+    assert.equal(GLYPH_STYLES.length, 11);
+    assert.equal(new Set(GLYPH_STYLES.map(s => s.no)).size, 11);
+    for (const s of GLYPH_STYLES) {
+        const svg = glyphStyleSvg(s.id, g, 252, false, {}, '24/0600 UTC');
+        assert.ok(svg.startsWith('<svg') && svg.length > 400, s.id);
+        assert.ok(!/NaN|undefined/.test(svg), `${s.id}: no NaN / undefined`);
+        if (s.id !== 'quiet' && s.id !== 'rings') assert.ok(/2\.4(\/8s)?</.test(svg), `${s.id}: swell 1 height shown`);
+        if (s.id !== 'rings' && s.id !== 'biggest') assert.ok(svg.includes('#ff3030'), `${s.id}: the wave over the limit is red`);
+    }
+    // calm: no waves, light wind — still draws without errors
+    for (const s of GLYPH_STYLES) assert.ok(!/NaN/.test(glyphStyleSvg(s.id, { sea: null, swell: null, wind: { dir: 10, kn: 3, level: 0 }, imo: false })), s.id);
+});
