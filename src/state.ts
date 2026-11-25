@@ -347,6 +347,8 @@ function persisted<T>(key: string, initial: T): Writable<T> {
 
 /** Fill the times Windy does not cover (past, or beyond the user's Windy plan) from Open-Meteo, free (point 6) */
 export const freeForecast = persisted<boolean>('freeForecast', true);
+/** Phones: after Windy closes the panel (pulled all the way down), a small "Galenea" tab stays at the bottom of the map to open it again (owner, 2026-11-25) */
+export const reopenTab = persisted<boolean>('reopenTab', true);
 /** Nautical chart overlay (OpenSeaMap seamarks) on the map (point 7) */
 export interface ChartLayers {
     seamarks: boolean;

@@ -13,7 +13,9 @@ import { ports, sphereNm } from '../lib/seaNet';
 import { sourceAt } from '../lib/seriesMerge';
 import type { TideTurn } from '../lib/tides';
 import { forecastInfo, type WxSeries } from '../lib/weather';
-import { fetchSeries } from './forecast';
+import { deviceOffline, fetchSeries, type AppSeries } from './forecast';
+import { IS_APP } from '../lib/appMode';
+import { idbGet, idbSet } from '../lib/idbCache';
 
 const DAY = 86400_000;
 export const PLACE_DAYS = 7;
@@ -37,7 +39,7 @@ export interface PlaceResult {
     /** Windy forecast run and fetch time, other sources */
     info: ReturnType<typeof forecastInfo>;
     stepH: number | null;
-    marine: { ok: boolean; error: string; fetched: number | null };
+    marine: { ok: boolean; error: string; fetched: number | null; kept?: boolean };
     fetched: number;
 }
 
@@ -140,8 +142,8 @@ export function hideMarker(): void {
     marker = null;
 }
 
-const marineCache = new Map<string, { at: number; m: Marine | null; err: string }>();
-async function getMarine(lat: number, lon: number): Promise<{ m: Marine | null; err: string; at: number }> {
+const marineCache = new Map<string, { at: number; m: Marine | null; err: string; kept?: boolean }>();
+async function getMarine(lat: number, lon: number): Promise<{ m: Marine | null; err: string; at: number; kept?: boolean }> {
     const key = `${lat.toFixed(2)},${lon.toFixed(2)}`;
     const c = marineCache.get(key);
     if (c && Date.now() - c.at < 3600e3) return c;
@@ -160,10 +162,17 @@ async function getMarine(lat: number, lon: number): Promise<{ m: Marine | null; 
         }
         const m = marineFromJson(await r.json());
         out = { m, err: m ? '' : 'no marine data for this point', at: Date.now() };
+        // app: kept on the phone (45 days) for use with no internet
+        if (IS_APP && m) idbSet(`pm:${key}`, { m, at: out.at }).catch(() => {});
     } catch (e) {
-        out = { m: null, err: (e as Error).message, at: Date.now() };
+        out = { m: null, err: deviceOffline() || /fetch|network/i.test((e as Error).message) ? 'no internet' : (e as Error).message, at: Date.now() };
+        if (IS_APP) {
+            const k = await idbGet<{ m: Marine; at: number }>(`pm:${key}`).catch(() => undefined);
+            if (k?.m && Date.now() - k.at < 45 * DAY) return { m: k.m, err: out.err, at: k.at, kept: true };
+        }
     }
-    marineCache.set(key, out);
+    // app: a failed answer is not remembered, so it is asked again as soon as the internet is back
+    if (out.m || !IS_APP) marineCache.set(key, out);
     return out;
 }
 
@@ -212,11 +221,15 @@ export async function loadPlace(): Promise<void> {
             tide: marine.m ? { ts: marine.m.ts, h: marine.m.seaLevel } : null,
             info: series ? forecastInfo([series]) : null,
             stepH: step,
-            marine: { ok: !!marine.m, error: marine.err, fetched: marine.m ? marine.at : null },
+            marine: { ok: !!marine.m, error: marine.err, fetched: marine.m ? marine.at : null, kept: !!marine.kept },
             fetched: Date.now(),
         });
-        const miss = [!series ? 'weather (Windy did not answer)' : '', !marine.m ? `tide, current and sea temperature (Open-Meteo: ${marine.err || 'no answer'})` : ''].filter(Boolean);
-        placeStatus.set(miss.length ? `Done, but missing: ${miss.join('; ')}.` : `Done (${((Date.now() - t0) / 1000).toFixed(1)} s).`);
+        const miss = [!series ? (IS_APP ? (deviceOffline() ? 'weather (no internet, and no forecast kept on this phone for this place)' : 'weather (Open-Meteo did not answer, and nothing kept for this place)') : 'weather (Windy did not answer)') : '', !marine.m ? `tide, current and sea temperature (${IS_APP && deviceOffline() ? 'no internet, and nothing kept on this phone for this place' : `Open-Meteo: ${marine.err || 'no answer'}`})` : ''].filter(Boolean);
+        // app: say plainly when the kept data are shown (no internet)
+        const keptS = IS_APP && (series as AppSeries | null)?.keptOffline;
+        const kept = [keptS ? `weather downloaded ${series?.fetchedAt ? new Date(series.fetchedAt).toISOString().slice(0, 16).replace('T', ' ') + ' UTC' : 'earlier'}` : '', marine.kept ? `tide downloaded ${new Date(marine.at).toISOString().slice(0, 16).replace('T', ' ')} UTC` : ''].filter(Boolean);
+        const keptNote = kept.length ? ` ${deviceOffline() ? 'No internet' : 'Could not download'}: showing what is kept on this phone (${kept.join('; ')}).` : '';
+        placeStatus.set((miss.length ? `Done, but missing: ${miss.join('; ')}.` : `Done (${((Date.now() - t0) / 1000).toFixed(1)} s).`) + keptNote);
         logEvent('place', `Port weather: ${series ? 'weather ok' : 'no weather'}, ${marine.m ? 'marine ok' : `no marine (${marine.err})`}`, { lat: p.lat, lon: p.lon });
     } catch (e) {
         if (my !== seq) return;
@@ -231,9 +244,9 @@ export async function loadPlace(): Promise<void> {
 export function placeSources(d: PlaceResult): string[] {
     const hm = (t: number) => new Date(t).toISOString().slice(11, 16);
     const out: string[] = [];
-    if (d.info) out.push(`Weather: Windy ${d.info.air} · waves ${d.info.waves} · fetched ${d.info.fetched}${d.stepH === 3 ? ' · 3-hourly, hours in between worked out' : ''}${d.info.other.length ? ` · also ${d.info.other.join('; ')}` : ''}`);
-    else out.push('Weather: not available (Windy did not answer)');
-    out.push(d.marine.ok && d.marine.fetched ? `Tide, current, sea temperature: Open-Meteo marine (Météo-France model, about 8 km; CC BY 4.0), fetched ${hm(d.marine.fetched)} UTC` : `Tide, current, sea temperature: not available (${d.marine.error || 'Open-Meteo did not answer'})`);
+    if (d.info) out.push(`Weather: ${IS_APP ? '' : 'Windy '}${d.info.air} · waves ${d.info.waves} · fetched ${d.info.fetched}${d.stepH === 3 ? ' · 3-hourly, hours in between worked out' : ''}${d.info.other.length ? ` · also ${d.info.other.join('; ')}` : ''}`);
+    else out.push(IS_APP ? 'Weather: not available (no forecast downloaded or kept for this place)' : 'Weather: not available (Windy did not answer)');
+    out.push(d.marine.ok && d.marine.fetched ? `Tide, current, sea temperature: Open-Meteo marine (Météo-France model, about 8 km; CC BY 4.0), fetched ${d.marine.kept ? new Date(d.marine.fetched).toISOString().slice(0, 16).replace('T', ' ') : hm(d.marine.fetched)} UTC${d.marine.kept ? ' (kept on this phone)' : ''}` : `Tide, current, sea temperature: not available (${d.marine.error || 'Open-Meteo did not answer'})`);
     out.push('Sun and moon: worked out by the plugin');
     return out;
 }

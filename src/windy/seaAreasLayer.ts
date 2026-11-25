@@ -13,11 +13,14 @@ import { map } from '@windy/map';
 import { get, writable } from 'svelte/store';
 
 import { logEvent } from '../lib/activityLog';
+import { IS_APP } from '../lib/appMode';
 import { idbGet, idbSet } from '../lib/idbCache';
 import { seaAreaLayers, type SeaAreaLayers } from '../state';
 
 /** Where the data lives (the public code page; raw.githubusercontent.com allows the browser to read it) */
-export const SEA_AREAS_BASE = 'https://raw.githubusercontent.com/nodecentral1990-cell/galenea-windy-plugin/main/data/seaareas/';
+export const SEA_AREAS_WEB = 'https://raw.githubusercontent.com/nodecentral1990-cell/galenea-windy-plugin/main/data/seaareas/';
+/** In the Galenea app the same files are inside the app (copied at build time, galenea-app/scripts/copy-data.mjs): no internet needed */
+export const SEA_AREAS_BASE = IS_APP ? 'data/seaareas/' : SEA_AREAS_WEB;
 const KEEP_MS = 30 * 86400e3;
 
 export interface ImoArea {
@@ -96,6 +99,12 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 
 /** JSON from the data folder: kept copy first (fresh if under 30 days old; any age if the download fails) */
 async function getData<T>(path: string): Promise<T | null> {
+    // the app reads its own copy (always there, always the one shipped with this version): no browser copy needed
+    if (IS_APP) {
+        const r = await fetch(SEA_AREAS_BASE + path);
+        if (!r.ok) throw new Error(`file missing in the app (${path})`);
+        return (await r.json()) as T;
+    }
     const key = `sa:${path}`;
     const kept = await idbGet<{ at: number; data: T }>(key).catch(() => undefined);
     if (kept && Date.now() - kept.at < KEEP_MS) return kept.data;
@@ -291,7 +300,7 @@ async function drawZones(s: SeaAreaLayers): Promise<void> {
     const notes: string[] = [];
     if (tooFar.length) notes.push(`zoom in to see: ${tooFar.map(k => ZONE_LABEL[k]).join(', ')}`);
     if (missing.length) notes.push(`not available yet: ${missing.map(k => ZONE_LABEL[k]).join(', ')}`);
-    if (failed) notes.push(`${failed} map piece(s) could not be downloaded`);
+    if (failed) notes.push(`${failed} map piece(s) could not be ${IS_APP ? 'read' : 'downloaded'}`);
     zoneNote = notes.join('; ');
     report(s);
 }
@@ -315,14 +324,14 @@ async function redraw(): Promise<void> {
         report(s);
     } catch (e) {
         areaLayers = clear(areaLayers);
-        seaAreaStatus.set(`IMO areas could not be downloaded (${(e as Error).message}). They need internet once; afterwards they are kept in this browser.`);
+        seaAreaStatus.set(IS_APP ? `IMO areas could not be read (${(e as Error).message}).` : `IMO areas could not be downloaded (${(e as Error).message}). They need internet once; afterwards they are kept in this browser.`);
         logEvent('error', `Sea areas: ${(e as Error).message}`);
     }
     try {
         await drawZones(s);
     } catch (e) {
         zoneLayers = clear(zoneLayers);
-        seaAreaStatus.set(`Distance lines could not be downloaded (${(e as Error).message}).`);
+        seaAreaStatus.set(`Distance lines could not be ${IS_APP ? 'read' : 'downloaded'} (${(e as Error).message}).`);
         logEvent('error', `Sea zones: ${(e as Error).message}`);
     }
 }

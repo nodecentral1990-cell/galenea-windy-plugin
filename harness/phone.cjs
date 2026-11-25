@@ -385,6 +385,19 @@ async function run(browser, W, H, out) {
     } else ok(false, `"What's new" not shown after an update`);
     const docW = await page.evaluate(() => document.documentElement.scrollWidth);
     ok(docW <= W + 1, `the page itself is never wider than the screen (${docW} px)`);
+    // Windy closes the panel when it is pulled all the way down (owner, 2026-11-25): a "Galenea" tab stays on the map, one tap opens it again
+    if (W === 390) {
+        await page.evaluate(() => { window.__opened = null; window.__bcast.on('rqstOpen', n => (window.__opened = n)); window.__plugin.$destroy(); });
+        await page.waitForTimeout(200);
+        const tab = page.locator('.pp-reopen .pp-reopen__open');
+        const tb = await tab.boundingBox().catch(() => null);
+        ok((await tab.count()) === 1 && tb && tb.height >= 38 && tb.y + tb.height <= H, `panel closed: a Galenea tab stays on the map (${tb ? Math.round(tb.height) : 0} px high, bottom ${tb ? Math.round(tb.y + tb.height) : 0} / ${H})`);
+        await tab.click();
+        ok((await page.evaluate(() => window.__opened)) === 'windy-plugin-passage-plan', 'tapping the tab asks Windy to open Galenea again');
+        await page.evaluate(() => { window.__plugin = new window.__PluginClass({ target: document.getElementById('pane') }); });
+        await page.waitForTimeout(400);
+        ok((await page.locator('.pp-reopen').count()) === 0 && (await page.locator('.g-head').count()) === 1, 'plugin open again: the tab is gone');
+    }
     ok(errors.length === 0, 'no page errors: ' + errors.join(' / ').slice(0, 300));
     await page.close();
 }

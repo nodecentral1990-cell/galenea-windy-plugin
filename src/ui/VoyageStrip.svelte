@@ -44,7 +44,8 @@
                 {/if}
                 {#if info}
                     <span class="g-voy__prov" data-g="strip-prov">
-                        {#if $phone}Windy {info.air.replace(/ \d{4}/, '')} · fetched {age.text || info.fetched}{:else}Weather data: Windy {info.air} · fetched {info.fetched}{age.text ? ` (${age.text})` : ''}{/if}
+                        {#if $phone}{WX_BY}{info.air.replace(/ \d{4}/, '')} · fetched {age.text || info.fetched}{:else}Weather data: {WX_BY}{info.air} · fetched {info.fetched}{age.text ? ` (${age.text})` : ''}{/if}
+                        {#if $wxOffline}<span class="g-voy__old" data-g="strip-offline"> · {$wxOffline}</span>{/if}
                         {#if age.old}
                             <span class="g-voy__old"> · The forecast is getting old (fetched more than {FORECAST_OLD_H} hours ago).</span>
                             <button type="button" class="g-btn g-btn--s" data-g="strip-forecast" on:click={getForecast}><Icon name="refresh" size={14} /> Get the latest</button>
@@ -76,7 +77,7 @@
     import { FORECAST_OLD_H, forecastAge, worstAhead } from '../lib/voyageStrip';
     import { logEvent } from '../lib/activityLog';
     import { climateTick, phone, plan, planKey, route, tableStepH, thresholds, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
-    import { refreshWeather, weatherBusy } from '../windy/weatherJobs';
+    import { refreshWeather, weatherBusy, WX_BY, wxOffline } from '../windy/weatherJobs';
 
     let clock = Date.now();
     const timer = setInterval(() => (clock = Date.now()), 60_000);

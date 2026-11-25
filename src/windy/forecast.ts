@@ -17,6 +17,8 @@ import { idbGet, idbPrune, idbSet } from '../lib/idbCache';
 import { dropIndices, fakeIndices, gaps, HISTORY_KEEP_MS, omToSeries, omUrls, partsOf, spliceSeries, stepOf, validSpan, withHistory } from '../lib/seriesMerge';
 import type { ShipPosition } from '../lib/model';
 import { extraFromJson, extraUrls, type Extra } from '../lib/marineExtra';
+import { IS_APP } from '../lib/appMode';
+import type { SeriesPart } from '../lib/weather';
 
 type Arr = (number | null)[];
 type Payload = { data?: { data?: Record<string, unknown>; summary?: unknown; header?: { refTime?: string; update?: string; model?: string; sst?: number; daysAvail?: number } } };
@@ -69,7 +71,8 @@ export const windyCoverage: { stepH: number | null; days: number | null; fakeDro
  */
 export function fetchSeries(lat: number, lon: number, step: 1 | 3 = 1, range?: { start: number; end: number }, opts?: { extra?: boolean }): Promise<WxSeries> {
     const base = fetchSeriesBase(lat, lon, step, range);
-    if (!opts?.extra) return base;
+    // in the app the sea, currents and visibility come with the main download (galenea-app/src/shim/fetch.ts)
+    if (!opts?.extra || IS_APP) return base;
     // sea, current and visibility downloaded with it (Open-Meteo), so nothing needs Windy's drawn map (2026-11-19)
     return base.then(async s => {
         const extra = await fetchExtra(lat, lon).catch(() => null);
@@ -86,6 +89,9 @@ function fetchSeriesBase(lat: number, lon: number, step: 1 | 3, range?: { start:
         cache.set(key, p);
     }
     if (!range || !freeFill) return p;
+    // app: everything Open-Meteo has ahead is in the main download; only times before it are asked (past days);
+    // when the download fails the forecast kept on the phone has already been used in loadKept
+    if (IS_APP) return p.then(s => fillGaps(s, range));
     return p.then(
         s => fillGaps(s, range),
         async err => {
@@ -99,20 +105,192 @@ function fetchSeriesBase(lat: number, lon: number, step: 1 | 3, range?: { start:
 async function loadKept(key: string, lat: number, lon: number, step: 1 | 3): Promise<WxSeries> {
     if (!pruned) {
         pruned = true;
-        idbPrune(IDB_PREFIX, KEEP_MS).catch(() => {});
+        // app: kept 45 days, so they can be used with no internet (galenea-app: offline once downloaded)
+        idbPrune(IDB_PREFIX, IS_APP ? HISTORY_KEEP_MS : KEEP_MS).catch(() => {});
         idbPrune('mx:', KEEP_MS).catch(() => {});
         idbPrune(HIST_PREFIX, HISTORY_KEEP_MS).catch(() => {});
     }
+    // app with no internet: straight to the kept forecast, counted, so the screen can say so (no "updated" claim)
+    if (IS_APP && deviceOffline()) return loadAppSeries(key, lat, lon, step);
     if (!skipStored) {
         const kept = await idbGet<WxSeries>(IDB_PREFIX + key).catch(() => undefined);
-        if (kept && kept.fetchedAt && Date.now() - kept.fetchedAt < KEEP_MS && kept.ts?.length && !kept.wavesFailed) return kept;
+        if (IS_APP && kept && kept.fetchedAt && Date.now() - kept.fetchedAt < KEEP_MS && kept.ts?.length && !kept.wavesFailed && !(kept as AppSeries).airMissing) {
+            memoryUse.points++;
+            memoryUse.oldest = Math.min(memoryUse.oldest ?? Infinity, kept.fetchedAt);
+            return kept;
+        }
+        if (kept && kept.fetchedAt && Date.now() - kept.fetchedAt < KEEP_MS && kept.ts?.length && !kept.wavesFailed && !(kept as AppSeries).airMissing) return kept;
     }
+    if (IS_APP) return loadAppSeries(key, lat, lon, step);
     const fresh = await loadSeries(lat, lon, step);
     const s = await remember(fresh).catch(() => fresh);
     // without Windy's waves: not kept, so the next request asks Windy again
     if (s.wavesFailed) cache.delete(key);
     else idbSet(IDB_PREFIX + key, s).catch(() => {});
     return s;
+}
+
+// ---------- Galenea app (IS_APP): Open-Meteo answers, and the forecast kept on the phone when there is no internet ----------
+
+/** What the app's header adds (galenea-app/src/weather/omConvert.ts AppHeader) */
+type AppHead = { model?: string; runEnd?: number | null; fallback?: string[]; tailFrom?: number | null; tailModel?: string; tailRefTime?: string; currentsModel?: string; tailError?: string };
+type AppPayload = { data?: { data?: Record<string, unknown>; header?: { refTime?: string; update?: string; sst?: number; app?: AppHead } } };
+/** A series as the app keeps it: when it came from the phone's memory because the download failed */
+export type AppSeries = WxSeries & { keptOffline?: boolean; airMissing?: string };
+
+/** Use of the forecast kept on the phone since the last reset (shown in the Weather tab's status line) */
+export const offlineUse: { points: number; none: number; oldest: number | null; run: string | undefined; reason: string } = { points: 0, none: 0, oldest: null, run: undefined, reason: '' };
+/** App: points served from the forecast downloaded less than 3 hours ago (no download needed) since the last reset */
+export const memoryUse: { points: number; oldest: number | null } = { points: 0, oldest: null };
+export function resetOfflineUse(): void {
+    memoryUse.points = 0;
+    memoryUse.oldest = null;
+    offlineUse.points = 0;
+    offlineUse.none = 0;
+    offlineUse.oldest = null;
+    offlineUse.run = undefined;
+    offlineUse.reason = '';
+}
+export const deviceOffline = (): boolean => typeof navigator !== 'undefined' && navigator.onLine === false;
+
+/** App: download (Open-Meteo through the app's @windy/fetch); if that fails, the forecast kept on the phone for this point */
+async function loadAppSeries(key: string, lat: number, lon: number, step: 1 | 3): Promise<WxSeries> {
+    let fresh: AppSeries | null = null;
+    let why = '';
+    try {
+        fresh = await appSeries(lat, lon, step);
+    } catch (e) {
+        why = (e as Error).message;
+    }
+    if (fresh && !fresh.airMissing && !fresh.wavesFailed) {
+        const s = await remember(fresh).catch(() => fresh as WxSeries);
+        idbSet(IDB_PREFIX + key, s).catch(() => {});
+        return s;
+    }
+    // download failed (no internet, Open-Meteo's limit) or came back half: the kept forecast, if there is one
+    const kept = await keptAny(key, lat, lon);
+    // a whole kept forecast is better than half a fresh one; half a kept one is not
+    if (kept && !(fresh && (kept as AppSeries).airMissing)) {
+        cache.delete(key);
+        offlineUse.points++;
+        offlineUse.oldest = Math.min(offlineUse.oldest ?? Infinity, kept.fetchedAt ?? Infinity);
+        offlineUse.run = offlineUse.run ?? kept.refTime ?? kept.wavesRefTime;
+        offlineUse.reason = why || fresh?.airMissing || offlineUse.reason;
+        return { ...kept, keptOffline: true } as AppSeries;
+    }
+    if (fresh) {
+        // half a forecast is better than none: kept for use with no internet, but asked again next time
+        cache.delete(key);
+        idbSet(IDB_PREFIX + key, fresh).catch(() => {});
+        return fresh;
+    }
+    offlineUse.none++;
+    offlineUse.reason = why || offlineUse.reason;
+    throw new Error(deviceOffline() || /internet/i.test(why) ? 'No internet, and no forecast kept on this phone for this position.' : why || 'Open-Meteo sent no forecast for this position.');
+}
+
+/** The forecast kept on the phone for this point (either time step), else the nearest kept within 30 nm (up to 45 days old) */
+async function keptAny(key: string, lat: number, lon: number): Promise<WxSeries | undefined> {
+    const ok = (k: WxSeries | undefined) => !!k && !!k.ts?.length && (!k.fetchedAt || Date.now() - k.fetchedAt < HISTORY_KEEP_MS);
+    const base = key.replace(/,[13]$/, '');
+    for (const st of [key, `${base},1`, `${base},3`]) {
+        const k = await idbGet<WxSeries>(IDB_PREFIX + st).catch(() => undefined);
+        if (ok(k)) return k;
+    }
+    const idx = ((await idbGet<HistEntry[]>(HIST_INDEX).catch(() => undefined)) ?? []).filter(e => Date.now() - e.at < HISTORY_KEEP_MS);
+    let near: HistEntry | null = null;
+    let best = Infinity;
+    for (const e of idx) {
+        const d = Math.hypot(e.lat - lat, ((((e.lon - lon + 540) % 360) - 180) * Math.cos((lat * Math.PI) / 180))) * 60;
+        if (d < best && d <= HIST_NEAR_NM) {
+            best = d;
+            near = e;
+        }
+    }
+    const k = near ? await idbGet<WxSeries>(HIST_PREFIX + near.key).catch(() => undefined) : undefined;
+    return ok(k) ? k : undefined;
+}
+
+/** The app's two answers (shaped like Windy's) turned into a series, with the source of every stretch named */
+async function appSeries(lat: number, lon: number, step: 1 | 3): Promise<AppSeries> {
+    let airErr = '';
+    const [air, sea] = await Promise.all([
+        (getPointForecastData('ecmwf', { lat, lon, step, days: FORECAST_DAYS, extended: true }) as unknown as Promise<AppPayload>).catch(e => {
+            airErr = (e as Error).message;
+            return null;
+        }),
+        wavesWithRetry(lat, lon, step) as Promise<AppPayload | null>,
+    ]);
+    const a = air?.data?.data;
+    const w = sea?.data?.data;
+    const ah = air?.data?.header;
+    const wh = sea?.data?.header;
+    const ats = (arr(a, 'ts') as number[] | undefined) ?? [];
+    const wts = (arr(w, 'ts') as number[] | undefined) ?? [];
+    if (!ats.length && !wts.length) throw new Error(airErr || 'Open-Meteo sent no forecast for this position.');
+    const fb = ah?.app?.fallback?.length ? ` (${ah.app.fallback.join(', ').replace(/_/g, ' ')}: Open-Meteo best match)` : '';
+    const airModel = ats.length ? `${ah?.app?.model ?? 'Open-Meteo ECMWF IFS 0.25°'}${fb}` : `no wind forecast (${airErr || 'not available'})`;
+    const wavesModel = wts.length ? `${wh?.app?.model ?? 'Open-Meteo marine'}${wh?.app?.currentsModel ? ` (currents, sea temperature: ${wh.app.currentsModel.replace(/^Open-Meteo /, '')})` : ''}` : undefined;
+    const parts: SeriesPart[] = [];
+    const aSpan = validSpan(ats, arr(a, 'wind')) ?? validSpan(ats, arr(a, 'pressure'));
+    if (aSpan) {
+        const end = ah?.app?.runEnd;
+        const lbl = `${airModel} run ${fmtRun(ah?.refTime)}`;
+        if (end && end < aSpan.to) {
+            parts.push({ kind: 'windy', group: 'air', from: aSpan.from, to: end, label: lbl });
+            // Open-Meteo keeps the later hours of the previous, longer run (ECMWF's 06 / 18 UTC runs reach only 6 days)
+            parts.push({ kind: 'openmeteo', group: 'air', from: end + 3600e3, to: aSpan.to, label: `${ah?.app?.model ?? 'Open-Meteo ECMWF IFS 0.25°'}, the run before (the newest run ends ${fmtRun(end)})` });
+        } else parts.push({ kind: 'windy', group: 'air', from: aSpan.from, to: aSpan.to, label: lbl });
+    }
+    const wSpan = validSpan(wts, arr(w, 'waves'));
+    if (wSpan) {
+        const tf = wh?.app?.tailFrom;
+        const lbl = `${wavesModel} run ${fmtRun(wh?.refTime)}`;
+        if (tf && tf <= wSpan.to) {
+            parts.push({ kind: 'windy', group: 'waves', from: wSpan.from, to: tf - 3600e3, label: lbl });
+            parts.push({ kind: 'openmeteo', group: 'waves', from: tf, to: wSpan.to, label: `${wh?.app?.tailModel ?? 'Open-Meteo GFS Wave 0.25°'} run ${fmtRun(wh?.app?.tailRefTime)} (after ${wavesModel?.split(' (')[0]} ends)` });
+        } else parts.push({ kind: 'windy', group: 'waves', from: wSpan.from, to: wSpan.to, label: lbl });
+    }
+    const extra: Extra | undefined = wts.length
+        ? { ts: wts, seaH: arr(w, 'windWave') ?? [], seaDir: arr(w, 'windWaveDir') ?? [], seaPer: arr(w, 'windWavePeriod') ?? [], curKn: arr(w, 'curKn') ?? [], curDir: arr(w, 'curDir') ?? [], visM: wts.map(() => null), fetchedAt: Date.now() }
+        : undefined;
+    return {
+        lat,
+        lon,
+        ts: ats.length ? ats : wts,
+        model: airModel,
+        refTime: ats.length ? ah?.refTime : undefined,
+        fetchedAt: Date.now(),
+        wind: arr(a, 'wind'),
+        windGust: arr(a, 'windGust'),
+        windDir: arr(a, 'windDir'),
+        pressure: arr(a, 'pressure'),
+        precipAmount: arr(a, 'precipAmount'),
+        icon: arr(a, 'icon'),
+        temp: arr(a, 'temperature'),
+        rh: arr(a, 'rh'),
+        vis: arr(a, 'vis'),
+        sstC: sstOf(wh?.sst),
+        wavesTs: wts,
+        waves: arr(w, 'waves'),
+        wavesDir: arr(w, 'wavesDir'),
+        wavesPeriod: arr(w, 'wavesPeriod'),
+        swell1: arr(w, 'swell1'),
+        swell1Dir: arr(w, 'swell1Dir'),
+        swell1Period: arr(w, 'swell1Period'),
+        swell2: arr(w, 'swell2'),
+        swell2Dir: arr(w, 'swell2Dir'),
+        swell2Period: arr(w, 'swell2Period'),
+        windWave: arr(w, 'windWave'),
+        windWaveDir: arr(w, 'windWaveDir'),
+        windWavePeriod: arr(w, 'windWavePeriod'),
+        wavesModel,
+        wavesRefTime: wh?.refTime,
+        ...(w ? {} : { wavesFailed: true }),
+        ...(extra ? { extra } : {}),
+        parts,
+        ...(ats.length ? {} : { airMissing: airErr || 'no wind forecast' }),
+    };
 }
 
 type HistEntry = { key: string; lat: number; lon: number; at: number };
@@ -131,7 +309,11 @@ async function remember(fresh: WxSeries): Promise<WxSeries> {
         }
     }
     const kept = near ? await idbGet<WxSeries>(HIST_PREFIX + near.key) : undefined;
-    const merged = withHistory(fresh, kept, k => ({ air: `Windy ${k.model} run ${fmtRun(k.refTime)} (kept in this browser)`, waves: `Windy ${k.wavesModel ?? k.model} run ${fmtRun(k.wavesRefTime)} (kept in this browser)` }));
+    const merged = withHistory(fresh, kept, k =>
+        IS_APP
+            ? { air: `${k.model} run ${fmtRun(k.refTime)} (kept on this phone)`, waves: `${k.wavesModel ?? k.model} run ${fmtRun(k.wavesRefTime)} (kept on this phone)` }
+            : { air: `Windy ${k.model} run ${fmtRun(k.refTime)} (kept in this browser)`, waves: `Windy ${k.wavesModel ?? k.model} run ${fmtRun(k.wavesRefTime)} (kept in this browser)` },
+    );
     // keep at most 45 days back
     const key = near?.key ?? `${fresh.lat.toFixed(2)},${fresh.lon.toFixed(2)}`;
     await idbSet(HIST_PREFIX + key, merged);
@@ -212,7 +394,9 @@ async function loadSeries(lat: number, lon: number, step: 1 | 3): Promise<WxSeri
 
 // ---------- Open-Meteo: free fill for past times and beyond the user's Windy plan ----------
 
-const omLabel = { air: 'Open-Meteo (free): ECMWF IFS 0.25°', waves: 'Open-Meteo (free): GFS Wave 0.25°' };
+const omLabel = IS_APP
+    ? { air: 'Open-Meteo ECMWF IFS 0.25° (earlier days)', waves: 'Open-Meteo GFS Wave 0.25° (earlier days)' }
+    : { air: 'Open-Meteo (free): ECMWF IFS 0.25°', waves: 'Open-Meteo (free): GFS Wave 0.25°' };
 const omCache = new Map<string, Promise<WxSeries | null>>();
 /** Last Open-Meteo problem, for the weather tab and the activity log */
 export const omStatus: { used: number; failed: number; lastError: string } = { used: 0, failed: 0, lastError: '' };
@@ -240,7 +424,7 @@ function openMeteo(lat: number, lon: number, range: { start: number; end: number
     if (p) return p;
     p = (async () => {
         const kept = skipStored ? undefined : await idbGet<WxSeries>(`om:${key}`).catch(() => undefined);
-        if (kept && kept.fetchedAt && Date.now() - kept.fetchedAt < KEEP_MS) return kept;
+        if (kept && kept.fetchedAt && (Date.now() - kept.fetchedAt < KEEP_MS || (IS_APP && deviceOffline()))) return kept;
         const u = omUrls(lat, lon, pastDays, { air: 15, waves: 16 });
         const [airJ, wavJ] = await Promise.all([
             getJson(u.air).catch(e => {
@@ -268,11 +452,18 @@ function openMeteo(lat: number, lon: number, range: { start: number; end: number
 async function fillGaps(s: WxSeries, range: { start: number; end: number }): Promise<WxSeries> {
     const g = gaps(s, range.start, range.end);
     const now = Date.now();
+    // app: only when the voyage starts before the wind forecast downloaded (earlier days); a point without the wind
+    // forecast (Open-Meteo did not answer) is not filled from the same service a second time
+    if (IS_APP) {
+        const a = validSpan(s.ts, s.wind);
+        if (!a || !(range.start < a.from - 3 * 3600e3)) return s;
+    }
     // no Windy waves at all here: the free waves fill the whole time (Windy's are asked for again later)
     const noW = !!s.wavesFailed;
     // Open-Meteo reaches back 92 days and ahead about 15–16 days
-    const before = (g.before || noW) && range.start > now - 92 * 86400e3;
-    const after = (g.after || noW) && (s.ts[s.ts.length - 1] ?? 0) < now + 15.5 * 86400e3;
+    // app: only earlier days (the main download already has all Open-Meteo offers ahead; no second download of it)
+    const before = (IS_APP ? g.before : g.before || noW) && range.start > now - 92 * 86400e3;
+    const after = !IS_APP && (g.after || noW) && (s.ts[s.ts.length - 1] ?? 0) < now + 15.5 * 86400e3;
     if (!before && !after) return s;
     const om = await openMeteo(s.lat, s.lon, range).catch(() => null);
     return om ? spliceSeries(s, om, 'openmeteo', omLabel) : s;

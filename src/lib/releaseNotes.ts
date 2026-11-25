@@ -10,6 +10,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.34.0',
+        date: '2026-11-25',
+        notes: [
+            'Phones: when the Galenea panel is pulled all the way down, Windy closes it (a plugin cannot stop that). Now a small "Galenea" tab stays at the bottom of the map: one tap opens the panel again, with your route and settings as they were. The ✕ on the tab hides it; to switch it off for good: Settings → Map display.',
+        ],
+    },
+    {
         version: '0.33.0',
         date: '2026-11-24',
         notes: [

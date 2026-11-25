@@ -36,6 +36,12 @@
     <input type="checkbox" bind:checked={$showIsobars} on:change={() => $showIsobars && showPressureLines()} />
     Show isobars (pressure lines) when the plugin opens
 </label>
+{#if !IS_APP}
+<label class="check" title="On a phone, Windy closes the plugin when its panel is pulled all the way down. This leaves a small Galenea tab at the bottom of the map: one tap opens the plugin again, with your route as it was.">
+    <input type="checkbox" bind:checked={$reopenTab} />
+    Phones: leave a "Galenea" tab on the map when the panel is pulled down (tap to open again)
+</label>
+{/if}
 {/if}
 {#if !part || part === 'ships'}
 <label class="check" title="One ring round the ship: an arrow head per wave from where it comes, height / period outside, wind barb on the ship. Amber = alert, red = limit or IMO warning.">
@@ -91,6 +97,7 @@
 {/if}
 
 <script lang="ts">
+    import { IS_APP } from '../lib/appMode';
     import Hint from './base/Hint.svelte';
     import { GLYPH_STYLES } from '../lib/glyphStyles';
     /** Show only this piece of the group (a gear beside a function); null = all of it */
@@ -107,7 +114,7 @@
     import { reopenWindows, resetAllWindows } from './floatWin';
     import { graphState } from './graphState';
     import { logEvent } from '../lib/activityLog';
-    import { cursorBar, glyphStyle, rangeRings, flagColors, followShip, panelDim, route, shipStepH, shipStyle, shipWeather, showIsobars, showShipBox, updateRoute } from '../state';
+    import { cursorBar, glyphStyle, rangeRings, flagColors, followShip, panelDim, reopenTab, route, shipStepH, shipStyle, shipWeather, showIsobars, showShipBox, updateRoute } from '../state';
 
     function showAll() {
         reopenWindows();

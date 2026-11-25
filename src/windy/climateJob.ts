@@ -5,11 +5,14 @@
 import { get, writable } from 'svelte/store';
 
 import { logEvent } from '../lib/activityLog';
+import { IS_APP } from '../lib/appMode';
 import { climatePoint, decodeClimMonth, setClimateSource, type ClimMonth, type ClimMonthFile } from '../lib/climate';
 import { idbGet, idbSet } from '../lib/idbCache';
 import { basePlan, climateOn, climateTick } from '../state';
 
-export const CLIMATE_BASE = 'https://raw.githubusercontent.com/nodecentral1990-cell/galenea-windy-plugin/main/data/climate/';
+export const CLIMATE_WEB = 'https://raw.githubusercontent.com/nodecentral1990-cell/galenea-windy-plugin/main/data/climate/';
+/** In the Galenea app all 12 months are inside the app (galenea-app/scripts/copy-data.mjs): voyages in any month, no internet */
+export const CLIMATE_BASE = IS_APP ? 'data/climate/' : CLIMATE_WEB;
 const KEEP_MS = 365 * 86400e3;
 /** Voyages ending later than this from now get the climate months */
 const NEEDED_AFTER_MS = 7 * 86400e3;
@@ -24,6 +27,14 @@ function loadMonth(m: number): Promise<ClimMonth | null> {
     if (p) return p;
     const name = `m${String(m).padStart(2, '0')}.json`;
     p = (async () => {
+        if (IS_APP) {
+            // the app's own copy: no download, no browser copy
+            const r = await fetch(CLIMATE_BASE + name);
+            if (!r.ok) throw new Error(`climate file missing in the app (${name})`);
+            const cm = decodeClimMonth((await r.json()) as ClimMonthFile);
+            months.set(m, cm);
+            return cm;
+        }
         const key = `cl:${name}`;
         const kept = await idbGet<{ at: number; data: ClimMonthFile }>(key).catch(() => undefined);
         let file: ClimMonthFile | null = kept && Date.now() - kept.at < KEEP_MS ? kept.data : null;
@@ -84,7 +95,11 @@ async function update(): Promise<void> {
         logEvent('weather', `Climate months loaded: ${want.join(', ')}`);
         climateTick.update(n => n + 1);
     } catch (e) {
-        climateStatus.set(`Climate averages could not be downloaded (${(e as Error).message}): beyond the forecast the plugin assumes calm water. They need internet once; then they are kept in this browser.`);
+        climateStatus.set(
+            IS_APP
+                ? `Climate averages could not be read (${(e as Error).message}): beyond the forecast the app assumes calm water.`
+                : `Climate averages could not be downloaded (${(e as Error).message}): beyond the forecast the plugin assumes calm water. They need internet once; then they are kept in this browser.`,
+        );
         logEvent('error', `Climate: ${(e as Error).message}`);
     }
 }

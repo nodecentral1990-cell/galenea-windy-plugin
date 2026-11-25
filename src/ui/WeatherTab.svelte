@@ -91,7 +91,7 @@
         <div class="g-prov runinfo">
             <Icon name="calendar" size={14} />
             <div>
-                Weather data: <b>Windy {info.air}</b> · waves {info.waves} · fetched {info.fetched}.
+                Weather data: <b>{WX_BY}{info.air}</b> · waves {info.waves} · fetched {info.fetched}.
                 {#if planTxt}<div>{planTxt}</div>{/if}
                 {#each moreSrc ? info.other : info.other.slice(0, 2) as o}<div><span class="wx-src" class:wx-src--om={o.includes('Open-Meteo')}>{o.includes('Open-Meteo') ? 'OM' : 'E'}</span> {o}</div>{/each}
                 {#if info.other.length > 2}<button class="pp-btn pp-btn--ghost small" on:click={() => (moreSrc = !moreSrc)}>{moreSrc ? 'Show fewer' : `${info.other.length - 2} more sources (earlier runs kept in this browser)…`}</button>{/if}
@@ -160,7 +160,7 @@
     import { beaufort, buildRows, encounterOf, forecastInfo, rollPeriodFor, seaDirOf, type WxRow } from '../lib/weather';
     import { writeXlsx } from '../lib/formats/xlsx';
     import { writeCsv } from '../lib/formats/table';
-    import { autoLayers, readLayer, refreshWeather, stopWeather, weatherBusy, weatherStatus, wxAuto } from '../windy/weatherJobs';
+    import { autoLayers, readLayer, refreshWeather, stopWeather, weatherBusy, weatherStatus, WX_BY, wxAuto } from '../windy/weatherJobs';
     import AreaWeather from './AreaWeather.svelte';
     let moreSrc = false;
     import { climateTick, mapProduct, plan, planKey, route, tableStepH, thresholds, timelineTs, updateRoute, vessel, wxPlanKey, wxSeries, wxSweepValid } from '../state';
@@ -196,7 +196,7 @@
     $: info = forecastInfo($wxSeries);
     // what the user's Windy plan gave (free users: 3-hour steps, about 5–7 days; Premium: 1 hour, longer)
     $: planTxt = info && windyCoverage.days != null ? `Your Windy plan gives ${windyCoverage.stepH ? `${windyCoverage.stepH}-hour steps, ` : ''}forecast to about ${windyCoverage.days.toFixed(0)} days ahead${windyCoverage.fakeDropped ? ' (Windy\'s sample days for non-Premium users left out)' : ''}.` : '';
-    $: source = info ? `Windy point forecast, ${info.air}; waves ${info.waves}${info.other.length ? `; also ${info.other.join('; ')}` : ''}` : '';
+    $: source = info ? `${WX_BY ? 'Windy point forecast' : 'Open-Meteo point forecast'}, ${info.air}; waves ${info.waves}${info.other.length ? `; also ${info.other.join('; ')}` : ''}` : '';
     $: hasCurrents = rows.some(r => r.wx?.currentKn != null);
     $: roll = rollPeriodFor($vessel);
     $: rollTxt = roll.value ? `${roll.value.toFixed(1)} s ${roll.estimated ? '(estimated from GM)' : '(measured)'}` : 'not set, so no roll checks';

@@ -26,7 +26,9 @@ import {
     wxSweepKey,
     wxSweepValid,
 } from '../state';
-import { clearExtraCache, clearForecastCache, extraStatus, fetchSeries, latestRun, lastSweepReport, omStatus, runLimited, setFreeFill, sweep, windyCoverage, type SweepKind } from './forecast';
+import { clearExtraCache, clearForecastCache, deviceOffline, extraStatus, fetchSeries, latestRun, lastSweepReport, memoryUse, offlineUse, omStatus, resetOfflineUse, runLimited, setFreeFill, sweep, windyCoverage, type SweepKind } from './forecast';
+import { IS_APP } from '../lib/appMode';
+import { fmtRun } from '../lib/weather';
 import store from '@windy/store';
 import { logEvent } from '../lib/activityLog';
 import { recordRoutePlanned } from '../lib/usage';
@@ -132,13 +134,44 @@ function scheduleWaveRetry(): void {
         const pts = [...pool.values()].filter(s => s.wavesFailed && (waveTries.get(pkey(s.lat, s.lon)) ?? 0) < WAVE_TRIES).map(s => ({ lat: s.lat, lon: s.lon }));
         if (!pts.length) return;
         for (const p of pts) waveTries.set(pkey(p.lat, p.lon), (waveTries.get(pkey(p.lat, p.lon)) ?? 0) + 1);
-        logEvent('weather', `Windy's waves missing at ${pts.length} point(s): asking again`, { pts });
+        logEvent('weather', `${WHO}'s waves missing at ${pts.length} point(s): asking again`, { pts });
         void refreshWeather({ quiet: true, only: pts, retryWaves: true });
     }, WAVE_RETRY_MS);
 }
 /** Route points with no downloaded forecast near them */
 export function missingPoints(): { lat: number; lon: number }[] {
     return routePointsByLeg(get(basePlan)).filter(p => coveredNm(p) > COVER_NM);
+}
+
+/** Requests at once: in the app many, so the app's Open-Meteo client can put them into a few requests (it keeps to the limits) */
+const PARALLEL = IS_APP ? 60 : 6;
+/** Who the forecast comes from, for the status lines */
+const WHO = IS_APP ? 'Open-Meteo' : 'Windy';
+/** Put before the forecast's model name on screen and in files ("Windy ECMWF …"; the app's names already say Open-Meteo) */
+export const WX_BY = IS_APP ? '' : 'Windy ';
+
+/** App: the note when the forecast kept on the phone was used because the download failed (galenea-app: offline) */
+export function offlineNote(): string {
+    if (!IS_APP || (!offlineUse.points && !offlineUse.none)) return '';
+    const off = deviceOffline() || /internet/i.test(offlineUse.reason);
+    const head = off ? 'No internet' : offlineUse.reason ? `Could not download: ${offlineUse.reason.replace(/\.$/, '')}` : 'Could not download (Open-Meteo did not answer)';
+    const kept = offlineUse.points
+        ? `using the forecast downloaded ${offlineUse.oldest ? fmtRun(offlineUse.oldest) : 'earlier'}${offlineUse.run ? ` (run ${fmtRun(offlineUse.run)})` : ''} for ${offlineUse.points} point${offlineUse.points === 1 ? '' : 's'}`
+        : '';
+    const none = offlineUse.none ? `${offlineUse.none} point${offlineUse.none === 1 ? '' : 's'} with no forecast kept on this phone` : '';
+    return `${head}: ${[kept, none].filter(Boolean).join('; ')}. ${off ? 'It downloads again by itself when the internet is back.' : 'It downloads again by itself later.'}`;
+}
+/** App: a forecast kept on the phone is in use, so get the new one when the internet is back */
+let usedKept = false;
+/** App: the "no internet / could not download" note while the kept forecast is shown ('' when the forecast is fresh) */
+export const wxOffline = writable('');
+/** App: the note from the forecasts on screen, when the phone says it has gone offline */
+function shownOfflineNote(): string {
+    const ss = get(wxSeries);
+    if (!ss.length) return 'No internet: no forecast downloaded yet for this route. It downloads by itself when the internet is back.';
+    const oldest = Math.min(...ss.map(s => s.fetchedAt ?? Infinity));
+    const run = ss.find(s => s.refTime)?.refTime ?? ss.find(s => s.wavesRefTime)?.wavesRefTime;
+    return `No internet: using the forecast downloaded ${isFinite(oldest) ? fmtRun(oldest) : 'earlier'}${run ? ` (run ${fmtRun(run)})` : ''}. It downloads again by itself when the internet is back.`;
 }
 
 let signal = { cancelled: false };
@@ -160,8 +193,9 @@ export async function refreshWeather(opts: { fresh?: boolean; title?: string; qu
     const quiet = !!opts.quiet;
     const sig = (signal = { cancelled: false });
     const auto = get(wxAuto);
-    const layers = auto.readMap && !quiet;
-    const steps = ['Forecast (Windy ECMWF + waves)' + (auto.extras ? ', sea, currents, visibility (Open-Meteo)' : ''), ...(layers ? [KIND_LABEL.sea, KIND_LABEL.currents, KIND_LABEL.visibility] : [])];
+    // app: no Windy map to read (sea, currents and visibility come with the Open-Meteo download)
+    const layers = auto.readMap && !quiet && !IS_APP;
+    const steps = [(IS_APP ? 'Forecast (Open-Meteo: ECMWF IFS, waves, sea, currents, visibility)' : 'Forecast (Windy ECMWF + waves)' + (auto.extras ? ', sea, currents, visibility (Open-Meteo)' : '')), ...(layers ? [KIND_LABEL.sea, KIND_LABEL.currents, KIND_LABEL.visibility] : [])];
     if (!quiet) workStart(opts.title ?? 'Getting the weather along the route', steps, sig);
     const t0 = Date.now();
     try {
@@ -184,9 +218,10 @@ export async function refreshWeather(opts: { fresh?: boolean; title?: string; qu
         const range = bp0.etd != null && bp0.eta != null ? { start: bp0.etd, end: bp0.eta } : undefined;
         if (!quiet) workProgress(steps[0], 0, pts.length);
         const key = get(planKey);
+        resetOfflineUse();
         const res = await runLimited(
             pts.map(pt => () => fetchSeries(pt.lat, pt.lon, step, range, { extra: auto.extras })),
-            6,
+            PARALLEL,
             n => {
                 weatherStatus.set(`${quiet ? 'Updating the weather for the route' : 'Fetching forecast'} ${n} / ${pts.length}…`);
                 if (!quiet) workProgress(steps[0], n, pts.length);
@@ -227,9 +262,20 @@ export async function refreshWeather(opts: { fresh?: boolean; title?: string; qu
                 ? `Stopped: ${ok.length} points fetched.`
                 : opts.only
                   ? opts.retryWaves
-                      ? `Updated at ${hm} UTC: Windy's waves asked for again at ${ok.length} point${ok.length === 1 ? '' : 's'}${noWaves ? `, still missing at ${noWaves} (waves from the next point or Open-Meteo there)` : ', all there now'}.`
+                      ? `Updated at ${hm} UTC: ${WHO}'s waves asked for again at ${ok.length} point${ok.length === 1 ? '' : 's'}${noWaves ? `, still missing at ${noWaves} (waves from the next point or Open-Meteo there)` : ', all there now'}.`
                       : `Updated at ${hm} UTC: ${ok.length} new forecast point${ok.length === 1 ? '' : 's'} for the changed part of the route; the rest from the forecast already downloaded.${failed ? ` ${failed} failed.` : ''}`
-                  : `${quiet ? 'Updated by itself' : 'Done'} at ${hm} UTC: ${ok.length} forecast points along the route${all.length > pts.length ? ` (+ ${all.length - pts.length} from the area)` : ''}${failed ? `, ${failed} failed` : ''}.`) + (noWaves && !opts.retryWaves ? ` Windy's waves missing at ${noWaves} point${noWaves === 1 ? '' : 's'}: asked for again in a minute or two; meanwhile from the next point or Open-Meteo.` : ''));
+                  : `${quiet ? 'Updated by itself' : 'Done'} at ${hm} UTC: ${ok.length} forecast points along the route${all.length > pts.length ? ` (+ ${all.length - pts.length} from the area)` : ''}${failed ? `, ${failed} failed` : ''}.`) + (noWaves && !opts.retryWaves ? ` ${WHO}'s waves missing at ${noWaves} point${noWaves === 1 ? '' : 's'}: asked for again in a minute or two; meanwhile from the next point or Open-Meteo.` : ''));
+        const off = offlineNote();
+        if (off) {
+            usedKept = true;
+            weatherStatus.set(off);
+            wxOffline.set(off);
+            logEvent('weather', off);
+        } else if (IS_APP && ok.length && memoryUse.points >= ok.length && !sig.cancelled) {
+            // nothing was downloaded: say so instead of "updated"
+            weatherStatus.set(`Weather from the forecast already downloaded ${memoryUse.oldest ? fmtRun(memoryUse.oldest) : 'earlier'}: nothing new to download.`);
+            wxOffline.set(deviceOffline() ? shownOfflineNote() : '');
+        } else if (IS_APP && ok.length) wxOffline.set('');
         scheduleWaveRetry();
         if (layers && !sig.cancelled && ok.length) {
             const done: string[] = [];
@@ -263,9 +309,10 @@ export async function refreshArea(opts: { fresh?: boolean; quiet?: boolean } = {
     const t0 = Date.now();
     try {
         if (opts.fresh) clearExtraCache();
+        resetOfflineUse();
         const res = await runLimited(
             g.points.map(p => () => fetchSeries(p.lat, p.lon, 3, undefined, { extra: a.extras })),
-            6,
+            PARALLEL,
             n => {
                 areaStatus.set(`Area: ${n} / ${g.points.length}…`);
                 if (!opts.quiet) workProgress(`Forecast at ${g.points.length} points, ${g.step}° apart`, n, g.points.length);
@@ -282,6 +329,11 @@ export async function refreshArea(opts: { fresh?: boolean; quiet?: boolean } = {
         wxPlanKey.set(get(planKey));
         const hm = new Date().toISOString().slice(11, 16);
         areaStatus.set(`${opts.quiet ? 'Updated by itself' : 'Done'} at ${hm} UTC: ${ok.length} of ${g.points.length} points, every ${g.step}°${ok.length < g.points.length ? ` (${g.points.length - ok.length} not answered)` : ''}.`);
+        const offA = offlineNote();
+        if (offA) {
+            usedKept = true;
+            areaStatus.set(`Area: ${offA}`);
+        } else if (IS_APP && ok.length && memoryUse.points >= ok.length) areaStatus.set(`Area: weather from the forecast already downloaded ${memoryUse.oldest ? fmtRun(memoryUse.oldest) : 'earlier'}: nothing new to download.`);
         logEvent('weather', `Area forecast: ${ok.length} of ${g.points.length} points (${g.step}°) in ${((Date.now() - t0) / 1000).toFixed(1)} s${opts.quiet ? ' (by itself)' : ''}`, { area: a.area, extras: { ...extraStatus } });
         if (get(route).waypoints.length >= 2 && !opts.quiet) refreshWeather({ quiet: true }).catch(() => {});
     } catch (err) {
@@ -353,7 +405,7 @@ async function checkNewRun(): Promise<void> {
     try {
         const run = await latestRun(s0.lat, s0.lon);
         if (run && run > have + 60e3) {
-            logEvent('weather', `Newer Windy run ${new Date(run).toISOString()} (had ${new Date(have).toISOString()}): fetching again`);
+            logEvent('weather', `Newer ${WHO} run ${new Date(run).toISOString()} (had ${new Date(have).toISOString()}): fetching again`);
             if (get(wxAuto).areaOn && get(wxAuto).area) await refreshArea({ fresh: true, quiet: true });
             await refreshWeather({ fresh: true, quiet: true });
         }
@@ -385,6 +437,39 @@ export function startAutoWeather(): void {
         if (!get(wxAuto).every3h || Date.now() - lastRunCheck < HOUR || get(weatherBusy) || get(areaBusy)) return;
         checkNewRun().catch(() => {});
     }, 5 * 60e3);
+    // app: when the internet comes back after the kept forecast was used, download again (galenea-app: offline)
+    if (IS_APP && typeof window !== 'undefined') {
+        const back = () => {
+            if (!usedKept) return;
+            usedKept = false;
+            logEvent('weather', 'Internet back: getting the forecast again');
+            weatherStatus.set('Internet back: getting the latest forecast…');
+            setTimeout(() => {
+                const w = get(wxAuto);
+                (w.areaOn && w.area ? refreshArea({ fresh: true, quiet: true }) : Promise.resolve())
+                    .then(() => refreshWeather({ fresh: true, quiet: true }))
+                    .catch(() => {});
+            }, 2000);
+        };
+        window.addEventListener('online', back);
+        unsubs.push(() => window.removeEventListener('online', back));
+        // gone offline: say so at once (the forecast on screen stays, from the phone's memory)
+        const gone = () => {
+            usedKept = true;
+            const n = shownOfflineNote();
+            wxOffline.set(n);
+            weatherStatus.set(n);
+            logEvent('weather', 'No internet: the kept forecast is used');
+        };
+        window.addEventListener('offline', gone);
+        unsubs.push(() => window.removeEventListener('offline', gone));
+        if (deviceOffline()) setTimeout(gone, 0);
+        // a phone can come back online without the browser noticing: check now and then while a kept forecast is in use
+        const poll = setInterval(() => {
+            if (usedKept && !deviceOffline() && !get(weatherBusy) && !get(areaBusy)) back();
+        }, 5 * 60e3);
+        unsubs.push(() => clearInterval(poll));
+    }
     // on opening: the route's forecast from memory / the web without a click, the area's too
     const a = get(wxAuto);
     if (a.areaOn && a.area) setTimeout(() => refreshArea({ quiet: true }).catch(() => {}), 1500);

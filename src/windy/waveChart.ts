@@ -16,6 +16,7 @@ import store from '@windy/store';
 import { get, writable } from 'svelte/store';
 
 import { logEvent } from '../lib/activityLog';
+import { IS_APP } from '../lib/appMode';
 import { isolines, levelsFor, refineSmooth, smoothLine, type Grid2D, type Line } from '../lib/contours';
 import { isLand } from '../lib/landMask';
 import {
@@ -178,6 +179,8 @@ async function gridFromWindy(line: WaveLine, t: number): Promise<Grid2D | null> 
     }
     const mid = raw[Math.floor(rows / 2)][Math.floor(cols / 2)];
     lastRaw = JSON.stringify(mid)?.slice(0, 60) ?? '';
+    // the app's own map answers in a known make-up (galenea-app/src/shim/interpolator.ts): nothing to work out
+    if (decode == null && IS_APP) decode = 'hypot';
     if (decode == null) decode = await calibrate(line, t, raw, south, west, d);
     if (decode == null) return null;
     const how = decode;
@@ -292,7 +295,11 @@ function updateLegend(): void {
         waveChartStatus.set('');
         return;
     }
-    if (!legend) legend = mapKey('wavekey', 'pp pp-wave-legend', { minW: 220, gear: { title: 'Settings: Wave chart (your colours)', onClick: w => openSetWin([{ id: 'wavechart' }], w) } });
+    // the app on a phone: the map's own key (bottom left) shows the colours; no second window over the small map
+    if (IS_APP && typeof window !== 'undefined' && window.innerWidth <= 600) {
+        legend?.remove();
+        legend = null;
+    } else if (!legend) legend = mapKey('wavekey', 'pp pp-wave-legend', { minW: 220, gear: { title: 'Settings: Wave chart (your colours)', onClick: w => openSetWin([{ id: 'wavechart' }], w) } });
     const p = PALETTES.find(x => x.id === s.palette) ?? PALETTES[0];
     let bar = '';
     if (coloured) {
@@ -321,7 +328,7 @@ function updateLegend(): void {
         })
         .join('');
     const t = Number(store.get('timestamp'));
-    legend.set(
+    legend?.set(
         `<span class="wl-title">🌊 Wave chart · ${new Date(t).toISOString().slice(8, 10)} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][new Date(t).getUTCMonth()]} ${new Date(t).toISOString().slice(11, 16)} UTC</span>`,
         (coloured
             ? `<div>Colours: <b>${OVERLAY_NAME[overlay] ?? overlay}</b> height (m), your scale, steps ${s.step} m, white below ${s.min[layer]} m</div>${bar}`

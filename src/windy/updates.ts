@@ -5,11 +5,13 @@
 // them up to the newest. Install: Windy's own "install plugin from URL" function, which is not an
 // official plugin API (checked in Windy's type files 2026-10-28) — if it is missing or refuses,
 // the 7 manual steps are shown instead.
+// In the Galenea Android app none of this runs (it is not a Windy plugin): the check only says where app updates come from.
 
 import { get, writable } from 'svelte/store';
 
 import config from '../pluginConfig';
 import { logEvent } from '../lib/activityLog';
+import { IS_APP } from '../lib/appMode';
 import { compareVersions, nextCandidates } from '../lib/releaseNotes';
 
 export const PLUGIN_BASE = 'https://windy-plugins.com/7865207/windy-plugin-passage-plan';
@@ -37,7 +39,7 @@ function load(): Saved {
         return d;
     }
 }
-export const updates = writable<Saved>(load());
+export const updates = writable<Saved>(IS_APP ? { ...load(), latest: null, latestBuilt: null } : load());
 updates.subscribe(s => {
     try {
         localStorage.setItem(KEY, JSON.stringify(s));
@@ -45,7 +47,9 @@ updates.subscribe(s => {
         /* not remembered */
     }
 });
-export const updateStatus = writable('');
+/** What the app says instead of checking Windy's plugin server (the app is updated by installing a newer APK) */
+export const APP_UPDATE_NOTE = "New versions of the Galenea app come from the owner's GitHub page (Releases): download the newer APK on the phone and install it over this one. Your route and settings are kept.";
+export const updateStatus = writable(IS_APP ? APP_UPDATE_NOTE : '');
 export const updateBusy = writable(false);
 /** Version installed in this page but not yet started (Windy must reload the page) (owner's report, 2026-10-30) */
 export const installedPending = writable<string | null>(null);
@@ -74,6 +78,10 @@ async function published(version: string): Promise<{ version: string; builtReada
 
 /** Look for a newer version. Returns it, or null when this is the newest. */
 export async function checkForUpdates(manual = false): Promise<string | null> {
+    if (IS_APP) {
+        updateStatus.set(APP_UPDATE_NOTE);
+        return null;
+    }
     if (get(updateBusy)) return null;
     updateBusy.set(true);
     updateStatus.set('Checking for updates…');
@@ -102,6 +110,7 @@ export async function checkForUpdates(manual = false): Promise<string | null> {
 
 /** On opening: the automatic check, at most once a day (owner, 2026-11-24: users should see a new version at once; was 30 days) */
 export function autoCheck(): void {
+    if (IS_APP) return;
     const s = get(updates);
     if (s.auto && Date.now() - s.lastCheck > DAY) checkForUpdates(false).catch(() => {});
 }
@@ -111,6 +120,7 @@ export const wantInstallSteps = writable(false);
 
 /** The header's update button (owner, 2026-11-24): install at once, or reload when installed, or show the steps */
 export async function updateFromHeader(): Promise<void> {
+    if (IS_APP) return;
     const v = get(updates).latest;
     if (!v) return;
     logEvent('update', `Header update button: ${v}`);
@@ -122,6 +132,10 @@ export async function updateFromHeader(): Promise<void> {
 
 /** One-click install through Windy, if it lets the plugin do it; otherwise false (show the manual steps). */
 export async function installUpdate(version: string): Promise<boolean> {
+    if (IS_APP) {
+        updateStatus.set(APP_UPDATE_NOTE);
+        return false;
+    }
     if (get(installedPending) === version) {
         reloadWindy();
         return true;

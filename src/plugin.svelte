@@ -1,6 +1,6 @@
 <div class="plugin__mobile-header">{title}</div>
 <section class="plugin__content pp g-shell" data-g-dim={$panelDim ? '' : null}>
-    <div class="plugin__title plugin__title--chevron-back g-head" bind:this={headEl} on:click={() => bcast.emit('rqstOpen', 'menu')}>
+    <div class="plugin__title plugin__title--chevron-back g-head" bind:this={headEl} on:click={() => !IS_APP && bcast.emit('rqstOpen', 'menu')}>
         <span class="g-head__name">{shortName}</span>
         <span class="g-head__ver" title="Plugin version">v{config.version}</span>
         <span class="g-head__tools" on:click|stopPropagation>
@@ -102,6 +102,9 @@
                     <UsageTab />
                 {:else if helpSeg === 'feedback'}
                     <Feedback />
+                {:else if IS_APP}
+                    <!-- the Galenea app puts its own About card here (galenea-app/src/shell/About.svelte) -->
+                    <div class="g-card" data-g-app="about" />
                 {:else}
                     <div class="g-card">
                         <div class="g-card__head"><span class="g-card__title">{config.title}</span><Gear host="about" chips={[{ id: 'updates' }]} /></div>
@@ -177,6 +180,7 @@
     import Hint from './ui/base/Hint.svelte';
     import DistancesPanel from './ui/DistancesPanel.svelte';
     import { installTheme } from './ui/theme';
+    import { hideReopenTab, showReopenTab } from './windy/reopenTab';
     import { RouteLayer } from './windy/mapLayer';
     import { glyphStyle,
         addMode,
@@ -257,7 +261,8 @@
     import SettingsFold from './ui/settings/SettingsFold.svelte';
     import SettingsWin from './ui/settings/SettingsWin.svelte';
     import { closeFold, closeSetWin, openSetWin, setWin } from './ui/settings/foldState';
-    import { setNavHandler, type NavTarget } from './ui/nav';
+    import { screenNow, setNavHandler, type NavTarget } from './ui/nav';
+    import { IS_APP } from './lib/appMode';
     import { startMapToolNote, stopMapToolNote } from './windy/mapToolNote';
     import TidePanel from './ui/TidePanel.svelte';
     import { cancelPick, hideMarker, loadPlace, pickAt, placeData, placePoint, setPoint, showMarker } from './windy/placeJob';
@@ -320,6 +325,7 @@
     let optSeg: (typeof OPT_SEGS)[number]['id'] = 'speed';
     let help = false;
     let helpSeg: (typeof HELP_SEGS)[number]['id'] = 'guide';
+    $: screenNow.set({ tab, help });
     function openTab(id: string): void {
         // old tab names (still used by some buttons) → new place
         if (id === 'speed') {
@@ -477,6 +483,7 @@
                 }
             }
         };
+        safe('Galenea tab', () => hideReopenTab());
         safe('Look', () => (uninstallTheme = installTheme()));
         safe('Phone screen', () => (stopSafeTop = watchSafeTop()));
         safe('Activity log', startLogging);
@@ -570,6 +577,8 @@
 
     let uninstallTheme: (() => void) | null = null;
     onDestroy(() => uninstallTheme?.());
+    // phones: Windy closes the panel when it is pulled all the way down; leave a tab to open it again (owner, 2026-11-25)
+    onDestroy(() => showReopenTab(get(phone) && !IS_APP));
     let stopSafeTop: (() => void) | null = null;
     onDestroy(() => stopSafeTop?.());
     onDestroy(() => {

@@ -1,5 +1,6 @@
 // One entry point for opening and saving route files.
 
+import { IS_APP } from '../appMode';
 import type { PlanCalc, Route } from '../model';
 
 import { isBvs, parseBvs, writeBvs, type BvsWriteContext } from './bvs';
@@ -22,7 +23,9 @@ export const EXPORT_FORMATS: { id: ExportFormat; label: string; note?: string }[
     { id: 'txt', label: 'Text (Notepad)' },
 ];
 
-export const IMPORT_ACCEPT = '.rtz,.rt3,.bvs,.gpx,.csv,.txt,.xlsx,.xml';
+// In the Galenea app no filter: Android's file picker knows no file type for .rtz / .rt3 / .bvs and would grey them out
+// (importRoute below recognises the file by its name and contents).
+export const IMPORT_ACCEPT = IS_APP ? '' : '.rtz,.rt3,.bvs,.gpx,.csv,.txt,.xlsx,.xml';
 
 const decode = (data: Uint8Array): string => {
     // UTF-8, falling back to Windows-1252 if the text is not valid UTF-8.

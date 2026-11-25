@@ -12,6 +12,7 @@ import store from '@windy/store';
 import { get, writable } from 'svelte/store';
 
 import { logEvent } from '../lib/activityLog';
+import { IS_APP } from '../lib/appMode';
 import { isolines, refineSmooth, smoothLine, type Grid2D, type Line } from '../lib/contours';
 import { isLand } from '../lib/landMask';
 import { projectOnLegs } from '../lib/model';
@@ -323,6 +324,8 @@ let seaTried = 0;
 /** Read Windy's wind-wave layer at the grid points for the chart time; returns how many were read */
 async function readSeaInto(points: FieldPoint[], t: number, signal: { cancelled: boolean }): Promise<number> {
     if (document.hidden) return 0; // Windy does not draw a hidden page
+    // the app: the forecast points already carry the downloaded sea (Open-Meteo); the app's map grid is coarser
+    if (IS_APP) return 0;
     if (!reading) {
         ownChange = true;
         try {

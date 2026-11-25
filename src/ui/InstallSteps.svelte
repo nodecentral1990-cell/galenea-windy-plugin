@@ -1,4 +1,6 @@
 <!-- The 7 steps to install a version by hand (as in windy/INSTALL.md), with the link and a copy button. -->
+<!-- the Galenea app is not installed through Windy: no steps there -->
+{#if !IS_APP}
 <ol class="steps">
     <li>Open <b>www.windy.com</b> and log in.</li>
     <li>Click the <b>menu (☰)</b> → <b>Install Windy Plugin</b>.</li>
@@ -11,9 +13,11 @@
     <li>Open it from Windy's <b>menu (☰)</b> → <b>{config.title}</b>.</li>
     <li>If the old version still shows: reload the page (⌘R / Ctrl+R) and open the plugin again.</li>
 </ol>
+{/if}
 
 <script lang="ts">
     import config from '../pluginConfig';
+    import { IS_APP } from '../lib/appMode';
     import { pluginUrl } from '../windy/updates';
 
     export let version: string;

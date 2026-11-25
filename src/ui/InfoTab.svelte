@@ -1,5 +1,6 @@
 <!-- Short explanations for mariners: weather models, which to use, data age, words used. -->
 <script lang="ts">
+    import { IS_APP } from '../lib/appMode';
     import { RELEASE_NOTES } from '../lib/releaseNotes';
     import { SETTINGS_GROUPS } from './settings/registry';
     import { goScreen } from './nav';
@@ -204,7 +205,7 @@
 <p class="pp-note">Versions 0.22.0 and older: RELEASE-HISTORY.md on the plugin's public code page (github.com/nodecentral1990-cell/galenea-windy-plugin). Updates: ⚙ Settings → Updates (check now, or by itself once a day; a green "Update" button appears next to the ⓘ when a new version is out).</p></div></details>
 <details class="gd"><summary>Words used in the plugin</summary><div class="gd__b"><table class="tbl words">
     <tr><td><b>SWH</b></td><td>Significant wave height: the whole sea state, sea and swell together.</td></tr>
-    <tr><td><b>Sea</b></td><td>Wind sea: waves made by the local wind. From Windy's <b>wind waves</b> layer (height, direction, period), read along the route after the forecast; until then worked out from SWH and the swells, direction from the wind.</td></tr>
+    <tr><td><b>Sea</b></td><td>{#if IS_APP}Wind sea: waves made by the local wind. From Open-Meteo marine (Météo-France MFWAM <b>wind waves</b>: height, direction, period), downloaded with the forecast; where it has none, worked out from SWH and the swells, direction from the wind.{:else}Wind sea: waves made by the local wind. From Windy's <b>wind waves</b> layer (height, direction, period), read along the route after the forecast; until then worked out from SWH and the swells, direction from the wind.{/if}</td></tr>
     <tr><td><b>Swell 1</b></td><td>The main swell: waves from distant weather (ECMWF-WAM).</td></tr>
     <tr><td><b>Swell 2</b></td><td>A second swell from another direction, if there is one.</td></tr>
     <tr><td><b>Period</b></td><td>Time between wave crests at a fixed point, seconds (from the forecast).</td></tr>

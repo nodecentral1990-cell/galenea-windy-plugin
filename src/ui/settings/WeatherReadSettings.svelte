@@ -3,10 +3,11 @@
     <input type="checkbox" bind:checked={$wxAuto.followRoute} />
     After a change of the route: show the weather at once, download only the new parts
 </label>
-<label class="gs-check" title="While the plugin is open, once an hour the plugin asks Windy (one small request) whether a newer forecast run is out; only then are the route's and the area's forecasts fetched again">
+<label class="gs-check" title={IS_APP ? "Once an hour the app asks Open-Meteo (one small request) whether a newer forecast run is out; only then are the forecasts fetched again" : "While the plugin is open, once an hour the plugin asks Windy (one small request) whether a newer forecast run is out; only then are the route's and the area's forecasts fetched again"}>
     <input type="checkbox" bind:checked={$wxAuto.every3h} />
-    Get the new forecast by itself when Windy has a newer run (checked every hour)
+    Get the new forecast by itself when {IS_APP ? 'Open-Meteo' : 'Windy'} has a newer run (checked every hour)
 </label>
+{#if !IS_APP}
 <label class="gs-check" title="Sea (wind waves) and currents from Open-Meteo marine (Météo-France), visibility from Open-Meteo, downloaded with the forecast: free, and it works while the Windy tab is hidden or minimised">
     <input type="checkbox" bind:checked={$wxAuto.extras} />
     Download sea, currents and visibility with the forecast (Open-Meteo, free; works with the tab hidden)
@@ -19,11 +20,19 @@
     <input type="checkbox" bind:checked={$freeForecast} />
     <span>Fill missing times from <b>Open-Meteo</b> (free): past times, and days beyond your Windy plan</span>
 </label>
+{/if}
 <label class="gs-check" title="Beyond the end of the forecast (about 10–15 days), the usual weather of that month from a climate table (ERA5, 2006–2025, 2° squares): mean wind and waves, with the chance of a gale and of high seas. Used in the weather table (rows marked C) and for the ETA; never a warning, never a forecast.">
     <input type="checkbox" bind:checked={$climateOn} />
     <span>Beyond the forecast: <b>climate averages</b> (usual weather of the month; rows marked <b>C</b>; also for the ETA)</span>
 </label>
 {#if $climateStatus}<div class="g-status">{$climateStatus}</div>{/if}
+{#if IS_APP}
+<div class="pp-note g-hl">
+    All weather comes from <b>Open-Meteo</b> (free, CC BY 4.0): wind and pressure from ECMWF IFS 0.25°, waves, swells, currents and sea
+    temperature from Météo-France MFWAM (about 10 days), then GFS Wave 0.25° up to 15 days. Rows marked <b>OM</b> = not the newest run or
+    another model; <b>C</b> = climate average, not a forecast. Everything downloaded is kept on this phone and used with no internet.
+</div>
+{:else}
 <div class="pp-note g-hl">
     Rows marked <b>E</b> = earlier Windy run kept here; <b>OM</b> = Open-Meteo; <b>C</b> = climate average, not a forecast.
     <Hint title="Where the weather comes from"
@@ -34,9 +43,11 @@
         </p></Hint
     >
 </div>
+{/if}
 
 <script lang="ts">
     import Hint from '../base/Hint.svelte';
+    import { IS_APP } from '../../lib/appMode';
     import { climateOn, freeForecast } from '../../state';
     import { climateStatus } from '../../windy/climateJob';
     import { autoLayers, wxAuto } from '../../windy/weatherJobs';
