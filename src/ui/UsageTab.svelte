@@ -26,7 +26,7 @@
     happened. Kept only in this browser; nothing is sent by itself. {#if !$logEnabled}<b>Recording is off (the gear beside this).</b>{/if}</p></Hint><Gear host="usage" line chips={[{ id: 'log' }]} />{#if !$logEnabled} <b class="pp-err">Recording is off.</b>{/if}</div>
 <SettingsFold host="usage" />
 <div class="row">
-    <button class="pp-btn" on:click={() => saveLog(hide)}><Icon name="save" size={15} /> Save activity log ({$logCount})</button>
+    <button class="pp-btn" on:click={() => saveLog(hide)}><Icon name="save" size={15} /> Save and send activity log ({$logCount})</button>
     <button class="pp-btn pp-btn--ghost" on:click={clear} disabled={!$logCount}>Clear log</button>
 </div>
 <label class="check"><input type="checkbox" bind:checked={hide} /> Hide exact positions and names in the file (rounded to whole degrees)</label>

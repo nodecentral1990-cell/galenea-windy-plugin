@@ -8,7 +8,7 @@
         <div class="fb__buttons">
             <button class="pp-btn g-btn--primary" on:click={() => start('suggestion')}><Icon name="mail" size={15} /> Send a suggestion</button>
             <button class="pp-btn" on:click={() => start('problem')}><Icon name="bug" size={15} /> Report a problem</button>
-            <button class="pp-btn pp-btn--ghost" on:click={() => saveLog()} title="Saves what the plugin did (UTC times) as a file to attach to a report. Help → Usage: options and the last entries"><Icon name="log" size={15} /> Save activity log</button>
+            <button class="pp-btn pp-btn--ghost" on:click={() => saveLog()} title="Saves what the plugin did (UTC times) and offers to send it to the developer: share menu on phones (WhatsApp, Gmail, email), otherwise Email / Gmail / WhatsApp with the file in your Downloads. Help → Usage: options and the last entries"><Icon name="log" size={15} /> Save and send activity log</button>
         </div>
     {:else}
         <div class="fb__form">

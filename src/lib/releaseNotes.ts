@@ -10,6 +10,13 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.37.0',
+        date: '2026-11-26',
+        notes: [
+            '"Save and send activity log" (Help → Feedback, Help → Usage): on a phone it opens the share menu with the file attached (WhatsApp, Gmail, email …); on a computer the file goes to your Downloads folder and a small window says so and offers Email, Gmail and WhatsApp to the developer, with the latest entries written in (attach the file).',
+        ],
+    },
+    {
         version: '0.36.0',
         date: '2026-11-26',
         notes: [

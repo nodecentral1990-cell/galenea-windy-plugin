@@ -108,7 +108,7 @@ export function buildLogFile(header: Record<string, unknown>, opts: { hidePositi
         return v;
     };
     const file = {
-        about: "Ship Master's Voyage Planner activity log. Times in UTC. Planning aid only.",
+        about: 'Galenea activity log (made for seafarers, by a seafarer). Times in UTC. Planning aid only.',
         savedAt: iso(Date.now()),
         positionsHidden: hide,
         ...header,

@@ -1326,7 +1326,14 @@ async function go(page, name) {
     ok(heat > 0, `usage heat map drawn (${heat} shapes on the map)`);
     await page.screenshot({ path: `${out}/17-usage.png` });
     await page.locator('button', { hasText: 'Hide usage map' }).click();
-    const [logDl] = await Promise.all([page.waitForEvent('download'), page.locator('#pane button', { hasText: 'Save activity log' }).first().click()]);
+    const [logDl] = await Promise.all([page.waitForEvent('download'), page.locator('#pane button', { hasText: 'Save and send activity log' }).first().click()]);
+    // saved: a window says where the file went and offers Email / Gmail / WhatsApp to the developer (owner, 2026-11-26)
+    await page.waitForSelector('.pp-sendlog', { timeout: 3000 }).catch(() => {});
+    const sendTxt = await page.locator('.pp-sendlog').innerText().catch(() => '');
+    const sendHrefs = await page.$$eval('.pp-sendlog .pp-sendlog__btn', as => as.map(a => a.getAttribute('href') || ''));
+    ok(/Downloads/.test(sendTxt) && /passage-plan-log-\d{8}-\d{4}Z\.json/.test(sendTxt) && sendHrefs.length === 3 && sendHrefs[0].startsWith('mailto:') && /mail\.google\.com/.test(sendHrefs[1]) && /wa\.me/.test(sendHrefs[2]),
+        'activity log saved: says where it went (Downloads, file name) and offers Email, Gmail and WhatsApp to the developer');
+    await page.locator('.pp-sendlog .pp-sendlog__x').click().catch(() => {});
     const logPath = path.join(out, 'activity-log.json');
     await logDl.saveAs(logPath);
     const logJson = JSON.parse(fs.readFileSync(logPath, 'utf8'));
@@ -1337,7 +1344,7 @@ async function go(page, name) {
     ok(logJson.entries.some(e => e.kind === 'click' && /Work out a safe speed and course plan/.test(e.msg)) && logJson.entries.some(e => e.kind === 'change' && /→/.test(e.msg)), 'log entries say which button and which setting');
     ok(logJson.plugin && logJson.route && Array.isArray(logJson.route.legs) && logJson.ship, 'log header has plugin, route, legs and ship');
     await go(page, 'Feedback');
-    ok((await page.locator('.fb button', { hasText: 'Save activity log' }).count()) === 1, 'Save activity log button in Help → Feedback');
+    ok((await page.locator('.fb button', { hasText: 'Save and send activity log' }).count()) === 1, 'Save and send activity log button in Help → Feedback');
 
     // Reading currents pauses while the tab is hidden, carries on by itself when visible again
     await go(page, 'Weather');
