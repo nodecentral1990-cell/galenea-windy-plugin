@@ -127,17 +127,17 @@
 {#if $work}
     <WorkOverlay job={$work} />
 {/if}
-{#if graphsShown && layer}
+{#if graphsShown && $mapLayer}
     <GraphPanel />
 {/if}
 {#if $setWin && !$phone}
     <SettingsWin />
 {/if}
-{#if $cursorBar.on && layer && !$phone}
+{#if $cursorBar.on && $mapLayer && !$phone}
     <CursorBar />
 {/if}
 <!-- phones: Windy shows the plugin full screen, so the ship window would cover it; Motion shows the same diagram -->
-{#if $showShipBox && layer && !$phone}
+{#if $showShipBox && $mapLayer && !$phone}
     <ShipBox
         routeName={$route.name}
         mapTs={$timelineTs}
@@ -181,45 +181,30 @@
     import DistancesPanel from './ui/DistancesPanel.svelte';
     import { installTheme } from './ui/theme';
     import { hideReopenTab, showReopenTab } from './windy/reopenTab';
-    import { RouteLayer } from './windy/mapLayer';
-    import { glyphStyle,
-        addMode,
-        deleteWaypoints,
-        insertWaypoint,
-        legClickInserts,
+    import { startMapKeeper, stopMapKeeper } from './windy/mapKeeper';
+    import { mapLayer, shipGlyphFn, shipNow } from './windy/mapKeeperState';
+    import {
         plan,
         route,
-        selectWp,
-        selectedUids,
-        landUids,
-        shipStepH,
-        shipWeather,
         shipStyle,
-        followShip,
         showShipBox,
         showIsobars,
         flagColors,
-        mapProduct,
         wxSweepValid,
-        savedRoutes,
         work,
         thresholds,
         timelineTs,
-        updateRoute,
         vessel,
         planKey,
         wxPlanKey,
         wxSeries,
+        reopenTab,
     } from './state';
     import { forecastInfo, nearestSweep, rollPeriodFor, weatherAt, withWindySea } from './lib/weather';
     import ShipBox from './ui/ShipBox.svelte';
     import WorkOverlay from './ui/WorkOverlay.svelte';
-    import { map } from '@windy/map';
-    import { glyphFor, type ShipGlyph } from './lib/shipGlyph';
-    import { openMenu, closeMenu } from './windy/contextMenu';
-    import { waypointsOnLand } from './windy/land';
-    import { newWaypoint, positionAt, projectOnLegs, shipPositions, type ShipPosition } from './lib/model';
-    import { fmtLat, fmtLon, fmtTime } from './lib/format';
+    import { positionAt } from './lib/model';
+    import { fmtTime } from './lib/format';
     import RouteTab from './ui/RouteTab.svelte';
     import SettingsTab, { openSettingsSection } from './ui/SettingsTab.svelte';
     import WeatherTab from './ui/WeatherTab.svelte';
@@ -231,41 +216,31 @@
     import UpdateBanner from './ui/UpdateBanner.svelte';
     import OptimiseTab from './ui/OptimiseTab.svelte';
     import { motionAt } from './lib/motionEstimate';
-    import { otherCopy, startLogging, stopLogging } from './logHooks';
+    import { otherCopy } from './logHooks';
     import { checkForUpdates, installedPending, reloadWindy, updateBusy, updateFromHeader, updateStatus, updates } from './windy/updates';
     import { compareVersions } from './lib/releaseNotes';
     import { panelDim } from './state';
     $: newer = !!$updates.latest && compareVersions($updates.latest, config.version) > 0;
-    import { startWaveChart, stopWaveChart } from './windy/waveChart';
-    import { startRollChart, stopRollChart } from './windy/rollChart';
-    import { startChartLayers, stopChartLayers } from './windy/chartLayer';
-    import { startPlaces, stopPlaces } from './windy/placesLayer';
-    import { startSeaAreas, stopSeaAreas } from './windy/seaAreasLayer';
-    import { startClimate, stopClimate } from './windy/climateJob';
-    import { dragMove, onUndoKey } from './routeHistory';
+    import { onUndoKey } from './routeHistory';
     const undoKey = (e: KeyboardEvent) => {
         const before = e.defaultPrevented;
         onUndoKey(e);
         if (!before && e.defaultPrevented) logEvent('route', `${e.key.toLowerCase() === 'y' || e.shiftKey ? 'Redo' : 'Undo'} (keys)`);
     };
-    import { setRingCenter, startRangeRings, stopRangeRings } from './windy/rangeRingsLayer';
     import CursorBar from './ui/CursorBar.svelte';
     import { cursorBar } from './state';
     import { logEvent } from './lib/activityLog';
     import GraphPanel from './ui/GraphPanel.svelte';
     import PortWeather from './ui/PortWeather.svelte';
-    import { startAreaLayer, stopAreaLayer } from './windy/areaLayer';
-    import { startAutoWeather, stopAutoWeather } from './windy/weatherJobs';
     import VoyageStrip from './ui/VoyageStrip.svelte';
     import Gear from './ui/base/Gear.svelte';
     import SettingsFold from './ui/settings/SettingsFold.svelte';
     import SettingsWin from './ui/settings/SettingsWin.svelte';
     import { closeFold, closeSetWin, openSetWin, setWin } from './ui/settings/foldState';
-    import { screenNow, setNavHandler, type NavTarget } from './ui/nav';
+    import { screenNow, setNavHandler, takePendingNav, type NavTarget } from './ui/nav';
     import { IS_APP } from './lib/appMode';
-    import { startMapToolNote, stopMapToolNote } from './windy/mapToolNote';
     import TidePanel from './ui/TidePanel.svelte';
-    import { cancelPick, hideMarker, loadPlace, pickAt, placeData, placePoint, setPoint, showMarker } from './windy/placeJob';
+    import { cancelPick, loadPlace, placeData, placePoint } from './windy/placeJob';
     import { graphState, phoneGraphOpen, toggleGraphs } from './ui/graphState';
     import { phone } from './state';
     import { bringToTop, watchSafeTop } from './ui/phoneSafe';
@@ -398,7 +373,6 @@
         if (t.tab === 'optimise' && t.seg) setOptSeg(t.seg as typeof optSeg);
         if (t.tab === 'snapshot' && t.seg) setMotionSeg(t.seg as typeof motionSeg);
     }
-    let layer: RouteLayer | null = null;
     let headEl: HTMLElement | null = null;
     function toTop() {
         try {
@@ -408,7 +382,6 @@
         }
     }
 
-    const onTs = (ts: number) => timelineTs.set(ts);
     /**
      * While typing in one of the plugin's boxes, keys (arrows especially) must not reach Windy,
      * which would otherwise move its time slider. Caught as early as possible (window, capture).
@@ -424,49 +397,13 @@
             e.stopPropagation();
         }
     };
-    const onProduct = (p: unknown) => mapProduct.set(typeof p === 'string' ? p : '');
 
     export const onopen = (_params: unknown) => {
         // Opened from the menu or a URL: nothing extra to do.
     };
 
-    /** Move Windy's time slider to the planned time at a waypoint (ETD for WP1, else ETA). */
-    function goToWaypointTime(uid: string) {
-        const r = get(route);
-        const p = get(plan);
-        const i = r.waypoints.findIndex(w => w.uid === uid);
-        if (i < 0 || p.etd == null) return;
-        const t = i === 0 ? p.etd : p.legs[i - 1]?.arriveMs;
-        if (t != null) store.set('timestamp', t);
-    }
-
-    // Land check (debounced): positions above sea level on Windy's elevation data
-    let landTimer: ReturnType<typeof setTimeout> | null = null;
-    $: landKey = $route.waypoints.map(w => `${w.uid}:${w.lat.toFixed(3)},${w.lon.toFixed(3)}`).join('|');
-    $: if (landKey !== undefined) {
-        if (landTimer) clearTimeout(landTimer);
-        const wps = $route.waypoints.map(w => ({ uid: w.uid, lat: w.lat, lon: w.lon }));
-        landTimer = setTimeout(() => waypointsOnLand(wps).then(s => landUids.set(s)), 700);
-    }
-
-    function appendWaypoint(lat: number, lon: number) {
-        updateRoute(r => {
-            const wp = newWaypoint(lat, lon, r.defaultLegType);
-            r.waypoints.push(wp);
-            selectedUids.set([wp.uid]);
-        });
-    }
-    /** Right-click on the map → Port weather / Tides for that point (never changes the route) */
-    function placeHere(lat: number, lon: number, view: 'port' | 'tides') {
-        setPoint(lat, lon);
-        loadPlace().catch(() => {});
-        openTab('weather');
-        weatherSeg = view;
-        logEvent('click', `Right-click on the map: ${view === 'port' ? 'Port weather' : 'Tides'} here`);
-    }
-
     function fit() {
-        layer?.fitTo(get(route));
+        get(mapLayer)?.fitTo(get(route));
     }
 
     onMount(() => {
@@ -486,90 +423,15 @@
         safe('Galenea tab', () => hideReopenTab());
         safe('Look', () => (uninstallTheme = installTheme()));
         safe('Phone screen', () => (stopSafeTop = watchSafeTop()));
-        safe('Activity log', startLogging);
-        safe('Wave chart', startWaveChart);
-        safe('Roll chart', startRollChart);
-        safe('Nautical charts', startChartLayers);
-        safe('Ports and canals', startPlaces);
-        safe('Sea areas and limits', startSeaAreas);
-        safe('Climate beyond the forecast', startClimate);
-        safe('Range rings', startRangeRings);
-        safe('Place marker', showMarker);
-        safe('Weather area on the map', startAreaLayer);
-        safe('Weather by itself', startAutoWeather);
+        // the route, ships and charts on the map: their own part, which keeps running on a phone after Windy closes the panel
+        safe('Map', startMapKeeper);
         safe('Jumps inside the panel', () => setNavHandler(navTo));
-        safe('Map tool note', startMapToolNote);
+        safe('Jump asked while closed', () => {
+            const t = takePendingNav();
+            if (t) navTo(t);
+        });
         safe('Undo / redo keys', () => window.addEventListener('keydown', undoKey, true));
-        layer = new RouteLayer({
-            onMove(uid, lat, lon, final) {
-                // the whole drag is one undo step (Ctrl+Z, owner 2026-11-23)
-                if (!final) dragMove(false);
-                updateRoute(r => {
-                    const w = r.waypoints.find(x => x.uid === uid);
-                    if (w) {
-                        w.lat = lat;
-                        w.lon = lon;
-                    }
-                });
-                if (final) dragMove(true);
-            },
-            onInsert(beforeIndex, lat, lon) {
-                insertWaypoint(beforeIndex, lat, lon);
-            },
-            onSelect(uid, additive) {
-                selectWp(uid, additive);
-                if (!additive) goToWaypointTime(uid);
-            },
-            onShipClick(time) {
-                store.set('timestamp', time);
-            },
-            pick(lat, lon) {
-                return pickAt(lat, lon);
-            },
-            onMapClick(lat, lon) {
-                if (!get(addMode)) return;
-                appendWaypoint(lat, lon);
-            },
-            onWaypointMenu(uid, x, y) {
-                const r = get(route);
-                const i = r.waypoints.findIndex(w => w.uid === uid);
-                if (i < 0) return;
-                const sel = get(selectedUids);
-                const many = sel.length > 1 && sel.includes(uid);
-                const items = [
-                    { label: `Delete waypoint ${i + 1}`, danger: true, action: () => deleteWaypoints([uid]) },
-                    ...(many ? [{ label: `Delete ${sel.length} selected waypoints`, danger: true, action: () => deleteWaypoints(sel) }] : []),
-                    ...(i < r.waypoints.length - 1
-                        ? [{ label: 'Insert waypoint after this one', action: () => { const a = r.waypoints[i]; const b = r.waypoints[i + 1]; insertWaypoint(i + 1, (a.lat + b.lat) / 2, a.lon + (((b.lon - a.lon + 540) % 360) - 180) / 2); } }]
-                        : []),
-                    { label: sel.includes(uid) ? 'Unselect' : 'Add to selection', action: () => selectWp(uid, true) },
-                    { label: `Port weather at WP${i + 1}`, action: () => placeHere(r.waypoints[i].lat, r.waypoints[i].lon, 'port') },
-                    { label: `Tides at WP${i + 1}`, action: () => placeHere(r.waypoints[i].lat, r.waypoints[i].lon, 'tides') },
-                ];
-                openMenu(x, y, `WP${i + 1}${r.waypoints[i].name ? ' · ' + r.waypoints[i].name : ''}`, items);
-            },
-            onLegMenu(beforeIndex, lat, lon, x, y) {
-                openMenu(x, y, `Leg WP${beforeIndex} → WP${beforeIndex + 1}`, [
-                    { label: 'Insert waypoint here', action: () => insertWaypoint(beforeIndex, lat, lon) },
-                ]);
-            },
-            onWaterMenu(lat, lon, x, y) {
-                openMenu(x, y, `${fmtLat(lat, 1)} ${fmtLon(lon, 1)}`, [
-                    { label: 'Port weather here', action: () => placeHere(lat, lon, 'port') },
-                    { label: 'Tides here', action: () => placeHere(lat, lon, 'tides') },
-                    { label: 'Add waypoint here (at the end of the route)', action: () => appendWaypoint(lat, lon) },
-                ]);
-            },
-            legClickInserts: () => get(legClickInserts),
-        });
-        const ts = store.get('timestamp');
-        if (typeof ts === 'number') timelineTs.set(ts);
-        store.on('timestamp', onTs);
         for (const k of ['keydown', 'keyup', 'keypress']) window.addEventListener(k, keyGuard as EventListener, true);
-        safe('Windy model', () => {
-            onProduct(store.get('product'));
-            store.on('product', onProduct);
-        });
         // Pressure lines on by default (⚙ Settings → Map display); only when Windy shows none
         safe('Pressure lines', () => get(showIsobars) && !store.get('isolinesOn') && showPressureLines());
         safe('Fit route', () => get(route).waypoints.length && fit());
@@ -587,80 +449,30 @@
         } catch {
             /* gone */
         }
-        stopLogging();
-        stopWaveChart();
-        stopRollChart();
-        stopChartLayers();
-        stopPlaces();
-        try {
-            stopClimate();
-        } catch {
-            /* gone */
-        }
-        try {
-            stopSeaAreas();
-        } catch {
-            /* gone */
-        }
-        stopRangeRings();
-        try {
-            stopAutoWeather();
-            stopAreaLayer();
-        } catch {
-            /* gone */
-        }
         try {
             cancelPick();
-            hideMarker();
             setNavHandler(null);
-            stopMapToolNote();
             closeFold(false);
             closeSetWin();
         } catch {
             /* gone */
         }
-        closeMenu();
-        store.off('timestamp', onTs);
         for (const k of ['keydown', 'keyup', 'keypress']) window.removeEventListener(k, keyGuard as EventListener, true);
-        store.off('product', onProduct);
-        layer?.destroy();
-        layer = null;
+        // the map part: kept on a phone while the Galenea tab is shown (owner, 2026-11-26), stopped everywhere else
+        try {
+            if (!(get(phone) && get(reopenTab) && !IS_APP)) stopMapKeeper();
+        } catch {
+            /* gone */
+        }
     });
 
-    // Voyage running: the part already sailed (up to the present position typed in, or where the plan puts the ship now)
+    // the header's clock
     let clock = Date.now();
     const clockTimer = setInterval(() => (clock = Date.now()), 60_000);
     onDestroy(() => clearInterval(clockTimer));
-    $: doneNm = $route.voyage ? sailedNm($plan, clock) : null;
-    function sailedNm(p: typeof $plan, nowMs: number): number | null {
-        if (p.fix) return p.fix.alongNm;
-        if (p.etd == null || p.eta == null) return null;
-        if (nowMs <= p.etd) return 0;
-        if (nowMs >= p.eta) return p.totalNm;
-        const pos = positionAt(get(route), p, nowMs);
-        return pos ? (projectOnLegs(p.legs, pos.lat, pos.lon)?.alongNm ?? null) : null;
-    }
-    $: layer && layer.render($route, $plan, $selectedUids, $landUids, doneNm);
-    $: layer && layer.renderCompare($savedRoutes.filter(s => s.show).map(s => ({ name: s.route.name, color: s.color, waypoints: s.route.waypoints })));
-
-    let ships: ShipPosition[] = [];
-    let now: ShipPosition | null = null;
-    $: ships = $shipStepH > 0 ? shipPositions($route, $plan, $shipStepH, 1500) : [];
-    $: now = $plan.etd != null && $plan.eta != null && $timelineTs >= $plan.etd && $timelineTs <= $plan.eta ? positionAt($route, $plan, $timelineTs) : null;
-    $: try { setRingCenter(now ? { lat: now.lat, lon: now.lon } : null); } catch { /* rings are optional */ }
-    // Weather on the ship symbols, only when the forecast belongs to the current plan
-    let glyph: (p: ShipPosition) => ShipGlyph | null = () => null;
-    $: glyph =
-        $wxSeries.length && $wxPlanKey === $planKey
-            ? (p: ShipPosition) => {
-                  const w0 = weatherAt($wxSeries, p, p.time);
-                  const w = w0 ? withWindySea(w0, $wxSweepValid, p.time) : null;
-                  const leg = $plan.legs[Math.max(0, p.legIdx)];
-                  return w ? glyphFor(w, p.course, leg ? leg.stw : 0, $vessel, $thresholds) : null;
-              }
-            : () => null;
-    $: layer &&
-        layer.renderShips(ships, now, p => `${fmtTime(p.time)} UTC`, glyph, $shipWeather, $shipStyle, $flagColors, $glyphStyle);
+    // the ship at the map time and its weather symbol come from the map part (MapKeeper.svelte)
+    $: now = $shipNow;
+    $: glyph = $shipGlyphFn;
 
     // Ship info window and "keep the ship centred"
     $: wxOk = $wxSeries.length > 0 && $wxPlanKey === $planKey;
@@ -677,7 +489,6 @@
             : $plan.eta != null && ($timelineTs < $plan.etd || $timelineTs > $plan.eta)
               ? `Map time is outside the voyage (${fmtTime($plan.etd)} – ${fmtTime($plan.eta)} UTC). Click a waypoint or ship to jump to it.`
               : 'No route yet.';
-    $: if ($followShip && now && layer) map.panTo([now.lat, now.lon], { animate: true, duration: 0.25 });
 
     function trackSog(p: typeof $plan, t: number): number | null {
         const tr = p.track;

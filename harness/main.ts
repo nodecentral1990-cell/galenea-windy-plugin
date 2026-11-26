@@ -5,3 +5,6 @@ const app = new Plugin({ target });
 (window as any).__PluginClass = Plugin;
 import { sim } from '../src/state';
 sim.subscribe(v => ((window as any).__sim = v));
+import { route as routeStore, addMode as addModeStore } from '../src/state';
+(window as any).__routeStore = routeStore;
+(window as any).__addMode = addModeStore;

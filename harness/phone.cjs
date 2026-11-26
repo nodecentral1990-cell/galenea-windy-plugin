@@ -387,16 +387,39 @@ async function run(browser, W, H, out) {
     ok(docW <= W + 1, `the page itself is never wider than the screen (${docW} px)`);
     // Windy closes the panel when it is pulled all the way down (owner, 2026-11-25): a "Galenea" tab stays on the map, one tap opens it again
     if (W === 390) {
-        await page.evaluate(() => { window.__opened = null; window.__bcast.on('rqstOpen', n => (window.__opened = n)); window.__plugin.$destroy(); });
-        await page.waitForTimeout(200);
+        const wpBefore = await page.locator('.pp-wp-icon').count();
+        // like Windy on a phone: the panel is destroyed and its box goes away, the map is free again
+        await page.evaluate(() => { window.__opened = null; window.__bcast.on('rqstOpen', n => (window.__opened = n)); window.__plugin.$destroy(); document.getElementById('pane').style.display = 'none'; });
+        await page.waitForTimeout(300);
+        // the map keeps working while the panel is closed (owner, 2026-11-26: "the route ... which i was editing with half screen - disappeared")
+        const wpAfter = await page.locator('.pp-wp-icon').count();
+        ok(wpBefore > 1 && wpAfter === wpBefore, `panel closed: the route and its ${wpBefore} waypoints stay on the map (${wpAfter})`);
+        const nBefore = await page.evaluate(() => { let n = 0; window.__routeStore.subscribe(r => (n = r.waypoints.length))(); return n; });
+        await page.evaluate(() => window.__addMode.set(true));
+        await page.mouse.click(W / 2, Math.round(H * 0.4));
+        await page.waitForTimeout(400);
+        const nAfter = await page.evaluate(() => { let n = 0; window.__routeStore.subscribe(r => (n = r.waypoints.length))(); return n; });
+        ok(nAfter === nBefore + 1 && (await page.locator('.pp-wp-icon').count()) === wpBefore + 1, `panel closed: a tap on the map still adds a waypoint (${nBefore} → ${nAfter}) and it is drawn`);
+        await page.evaluate(() => window.__addMode.set(false));
+        await page.screenshot({ path: `${out}/40-panel-closed-map-works.png` });
         const tab = page.locator('.pp-reopen .pp-reopen__open');
         const tb = await tab.boundingBox().catch(() => null);
         ok((await tab.count()) === 1 && tb && tb.height >= 38 && tb.y + tb.height <= H, `panel closed: a Galenea tab stays on the map (${tb ? Math.round(tb.height) : 0} px high, bottom ${tb ? Math.round(tb.y + tb.height) : 0} / ${H})`);
         await tab.click();
         ok((await page.evaluate(() => window.__opened)) === 'windy-plugin-passage-plan', 'tapping the tab asks Windy to open Galenea again');
-        await page.evaluate(() => { window.__plugin = new window.__PluginClass({ target: document.getElementById('pane') }); });
+        await page.evaluate(() => { document.getElementById('pane').style.display = ''; window.__plugin = new window.__PluginClass({ target: document.getElementById('pane') }); });
         await page.waitForTimeout(400);
         ok((await page.locator('.pp-reopen').count()) === 0 && (await page.locator('.g-head').count()) === 1, 'plugin open again: the tab is gone');
+        ok((await page.locator('.pp-wp-icon').count()) === wpBefore + 1, 'plugin open again: one route on the map, not two');
+        // ✕ on the tab closes Galenea fully: the route leaves the map
+        await page.evaluate(() => { window.__plugin.$destroy(); document.getElementById('pane').style.display = 'none'; });
+        await page.waitForTimeout(300);
+        await page.locator('.pp-reopen .pp-reopen__x').click();
+        await page.waitForTimeout(300);
+        ok((await page.locator('.pp-reopen').count()) === 0 && (await page.locator('.pp-wp-icon').count()) === 0, '✕ on the tab: Galenea closes fully, the route leaves the map');
+        await page.evaluate(() => { document.getElementById('pane').style.display = ''; window.__plugin = new window.__PluginClass({ target: document.getElementById('pane') }); });
+        await page.waitForTimeout(400);
+        ok((await page.locator('.pp-wp-icon').count()) === wpBefore + 1, 'opened again from the menu: the route is back on the map');
     }
     ok(errors.length === 0, 'no page errors: ' + errors.join(' / ').slice(0, 300));
     await page.close();

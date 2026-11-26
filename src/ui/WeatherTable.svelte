@@ -43,7 +43,7 @@
             {#each rows as r}
                 {@const lv = levelsOf(r)}
                 <tr class:wp={r.atWaypoint != null} class:now={isNow(r)} class:past={r.time < Date.now() - 1800e3} class:clim={r.src?.kind === 'climate'} on:click={() => onRowClick(r)}>
-                    <td class="g nowrap">{fmtTime(r.time).slice(0, 6)}{#if r.src}<span class="srcmk" class:om={r.src.kind === 'openmeteo'} class:cl={r.src.kind === 'climate'} title={r.src.label}>{r.src.kind === 'openmeteo' ? 'OM' : r.src.kind === 'climate' ? 'C' : 'E'}</span>{/if}</td>
+                    <td class="g nowrap">{fmtTime(r.time).slice(0, 6)}{#if r.src}<span class="srcmk" class:om={r.src.kind === 'openmeteo'} class:cl={r.src.kind === 'climate'} title={r.src.label}>{r.src.kind === 'openmeteo' ? 'OM' : r.src.kind === 'climate' ? 'C' : 'E'}</span>{:else if r.wx?.wavesOM}<span class="srcmk om" title="Waves (SWH, swell 1, swell 2) from Open-Meteo marine: Windy's wave forecast had none here at this time. Wind and the rest from Windy.">OM</span>{/if}</td>
                     <td class="mono">{fmtTime(r.time).slice(7)}</td>
                     <td>{#if r.atWaypoint != null}<b>WP{r.atWaypoint + 1}</b>{/if}</td>
                     <td class="g mono">{fmtLat(r.pos.lat, 1)}</td>

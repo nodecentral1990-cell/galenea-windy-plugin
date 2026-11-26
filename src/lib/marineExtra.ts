@@ -16,6 +16,20 @@ export interface Extra {
     curDir: (number | null)[];
     /** Visibility, metres (Open-Meteo forecast) */
     visM: (number | null)[];
+    /**
+     * SWH, swell 1 and swell 2 (height m, direction FROM ° true, period s; Open-Meteo marine). Used only where Windy's
+     * wave forecast has nothing (owner's report, 2026-11-26: roll and pitch still missing in stretches of the graph).
+     * Missing in extras kept by older versions.
+     */
+    waveH?: (number | null)[];
+    waveDir?: (number | null)[];
+    wavePer?: (number | null)[];
+    sw1H?: (number | null)[];
+    sw1Dir?: (number | null)[];
+    sw1Per?: (number | null)[];
+    sw2H?: (number | null)[];
+    sw2Dir?: (number | null)[];
+    sw2Per?: (number | null)[];
     fetchedAt: number;
 }
 
@@ -24,7 +38,7 @@ const KMH_PER_KN = 1.852;
 export function extraUrls(lat: number, lon: number): { marine: string; vis: string } {
     const ll = `latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}`;
     return {
-        marine: `https://marine-api.open-meteo.com/v1/marine?${ll}&hourly=wind_wave_height,wind_wave_direction,wind_wave_period,ocean_current_velocity,ocean_current_direction&timeformat=unixtime&timezone=GMT&past_days=2&forecast_days=8`,
+        marine: `https://marine-api.open-meteo.com/v1/marine?${ll}&hourly=wind_wave_height,wind_wave_direction,wind_wave_period,ocean_current_velocity,ocean_current_direction,wave_height,wave_direction,wave_period,swell_wave_height,swell_wave_direction,swell_wave_period,secondary_swell_wave_height,secondary_swell_wave_direction,secondary_swell_wave_period&timeformat=unixtime&timezone=GMT&past_days=2&forecast_days=10`,
         vis: `https://api.open-meteo.com/v1/forecast?${ll}&hourly=visibility&timeformat=unixtime&timezone=GMT&past_days=2&forecast_days=15`,
     };
 }
@@ -55,17 +69,27 @@ export function extraFromJson(marine: J, vis: J, fetchedAt = Date.now()): Extra 
         curKn: on(tm, col(marine, 'ocean_current_velocity', tm.length).map(toKn)),
         curDir: on(tm, col(marine, 'ocean_current_direction', tm.length)),
         visM: on(tv, visM),
+        waveH: on(tm, col(marine, 'wave_height', tm.length)),
+        waveDir: on(tm, col(marine, 'wave_direction', tm.length)),
+        wavePer: on(tm, col(marine, 'wave_period', tm.length)),
+        sw1H: on(tm, col(marine, 'swell_wave_height', tm.length)),
+        sw1Dir: on(tm, col(marine, 'swell_wave_direction', tm.length)),
+        sw1Per: on(tm, col(marine, 'swell_wave_period', tm.length)),
+        sw2H: on(tm, col(marine, 'secondary_swell_wave_height', tm.length)),
+        sw2Dir: on(tm, col(marine, 'secondary_swell_wave_direction', tm.length)),
+        sw2Per: on(tm, col(marine, 'secondary_swell_wave_period', tm.length)),
         fetchedAt,
     };
     const any = (a: (number | null)[]) => a.some(v => v != null);
-    return any(out.seaH) || any(out.curKn) || any(out.visM) ? out : null;
+    return any(out.seaH) || any(out.curKn) || any(out.visM) || any(out.waveH ?? []) ? out : null;
 }
 
 /** Value at a time: straight line between the two hours around it (angles the short way), none if more than 1.5 h away */
 export function extraAt(e: Extra | undefined | null, key: Exclude<keyof Extra, 'ts' | 'fetchedAt'>, t: number, angle = false): number | null {
     if (!e || !e.ts.length) return null;
     const ts = e.ts;
-    const a = e[key] as (number | null)[];
+    const a = e[key] as (number | null)[] | undefined;
+    if (!a) return null;
     let j = ts.findIndex(x => x >= t);
     if (j < 0) j = ts.length;
     const i = j - 1;

@@ -109,7 +109,7 @@
                 </div>
                 <div class="gp__foot" bind:clientHeight={footSeen}>
                     <span><b>{readT === hoverT ? ($phone ? 'At your finger' : 'At pointer') : 'At map time'}: {fmtTime(readT)} UTC</b> · yellow line = map time, green dashed = now · {$phone ? 'touch a graph to read it and set the map time there' : 'click to set the map there'}</span>
-                    <span class="gp__muted">{runInfo ? `Weather: ${runInfo.air} · waves ${runInfo.waves} · fetched ${runInfo.fetched}${$phone ? '.' : ''}` : 'No forecast for this plan yet: Weather tab → Get forecast (ship values only).'} {$phone ? 'Roll / pitch are estimates. Planning aid only.' : 'RPM, power, slip, fuel from your speed table; roll / pitch are estimates. Planning aid only.'}</span>
+                    <span class="gp__muted">{runInfo ? `Weather: ${runInfo.air} · waves ${runInfo.waves} · fetched ${runInfo.fetched}${$phone ? '.' : ''}` : 'No forecast for this plan yet: Weather tab → Get forecast (ship values only).'}{omWaves ? ` Waves from Open-Meteo where Windy's wave forecast had none: ${omWaves} of ${rows.length} times (marked OM in the table).` : ''}{noWaves ? ` No wave data at ${noWaves} times (neither Windy nor Open-Meteo): no roll / pitch there.` : ''} {$phone ? 'Roll / pitch are estimates. Planning aid only.' : 'RPM, power, slip, fuel from your speed table; roll / pitch are estimates. Planning aid only.'}</span>
                 </div>
             {/if}
         </div>
@@ -170,6 +170,9 @@
             : ([] as WxRow[]);
     $: times = rows.map(r => r.time);
     $: runInfo = wxOk ? forecastInfo($wxSeries) : null;
+    // say where the waves (and so roll / pitch) came from, or why they are missing (owner's report, 2026-11-26)
+    $: omWaves = rows.filter(r => r.wx?.wavesOM).length;
+    $: noWaves = rows.filter(r => r.wx && !r.stopped && !r.wx.clim && r.wx.hs == null && r.wx.sw1 == null).length;
     $: ctx = {
         vessel: $vessel,
         motion: (r: WxRow) => (r.wx && !r.stopped ? motionAt(r.wx, r.pos.course, r.speedKn, $vessel) : null),

@@ -2,7 +2,8 @@
 // again by going in menu"): Windy's phone panel can be pulled half way down to see the map, but pulled further Windy
 // closes the plugin; a plugin cannot stop that. So when the panel closes on a phone, a small "Galenea" tab is left at the
 // bottom of the map; one tap opens the plugin again (route, ship and settings are kept, as after any reopening). It goes
-// away when the plugin is open again, or with its own ✕ (until the next closing). Switch: Settings → Map display.
+// away when the plugin is open again, or with its own ✕, which closes Galenea fully (route and charts leave the map).
+// While the tab is shown, everything on the map keeps working (MapKeeper.svelte). Switch: Settings → Map display.
 // Opening: Windy's documented message bcast 'rqstOpen' with the plugin's name; if Windy has not opened it within 2 s, the
 // plugin object in window.W is asked directly; failing both, the tab says to use Windy's menu ☰.
 
@@ -12,6 +13,7 @@ import { get } from 'svelte/store';
 import config from '../pluginConfig';
 import { logEvent } from '../lib/activityLog';
 import { reopenTab } from '../state';
+import { stopMapKeeper } from './mapKeeper';
 
 let el: HTMLElement | null = null;
 let opened = false;
@@ -59,11 +61,13 @@ export function showReopenTab(isPhone: boolean): void {
         }
         el = document.createElement('div');
         el.className = 'pp-reopen';
-        el.innerHTML = `<button type="button" class="pp-reopen__open" aria-label="Open Galenea again">${UP}<span>Galenea</span><span class="pp-reopen__msg"></span></button><button type="button" class="pp-reopen__x" aria-label="Hide this tab" title="Hide this tab (Settings → Map display: switch it off for good)">✕</button>`;
+        el.innerHTML = `<button type="button" class="pp-reopen__open" aria-label="Open Galenea again">${UP}<span>Galenea</span><span class="pp-reopen__msg"></span></button><button type="button" class="pp-reopen__x" aria-label="Close Galenea" title="Close Galenea: the route and charts leave the map (Settings → Map display: switch the tab off for good)">✕</button>`;
         el.querySelector('.pp-reopen__open')?.addEventListener('click', openAgain);
         el.querySelector('.pp-reopen__x')?.addEventListener('click', () => {
-            logEvent('click', 'Reopen tab: hidden');
+            // ✕ = close Galenea fully: the route, ships and charts leave the map too (owner, 2026-11-26)
+            logEvent('click', 'Galenea tab ✕: closed fully (map part stopped)');
             hideReopenTab();
+            stopMapKeeper();
         });
         document.body.appendChild(el);
         logEvent('ui', 'Panel closed on a phone: Galenea tab left on the map');

@@ -10,6 +10,15 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.35.0',
+        date: '2026-11-26',
+        notes: [
+            'Phones: with the panel pulled all the way down, everything on the map now keeps working: the route and waypoints (drag them, tap the map to add, long-press menu), the ships with their weather, wave and roll charts, sea areas, ports, range rings, the weather box, and the weather that follows your route changes. Tap the "Galenea" tab to bring the panel back; the ✕ on the tab closes Galenea fully (the route leaves the map).',
+            'Roll and pitch no longer go missing in stretches of the graph: a wave period of 0 seconds in the forecast (Windy sends it where a swell is all but absent) made the whole roll / pitch sum fail. Now such a wave is left out, or, if it is a real swell, it gets a usable period.',
+            'Where Windy\'s wave forecast has no SWH or swells at a point and time, the plugin now uses Open-Meteo\'s marine forecast for those hours (marked OM in the weather table, counted under the graphs), so roll and pitch can still be worked out.',
+        ],
+    },
+    {
         version: '0.34.0',
         date: '2026-11-25',
         notes: [

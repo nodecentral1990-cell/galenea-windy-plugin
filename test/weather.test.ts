@@ -152,3 +152,40 @@ test('waves from the next point when the nearest has none (owner 2026-11-22: rol
     const alone = weatherAt([noWaves, far], { lat: 34, lon: -25.1 }, ts[1]);
     assert.equal(alone!.hs, null, 'no point within 100 nm: no waves rather than far-away ones');
 });
+
+test('a hole in Windy\'s wave forecast is filled from Open-Meteo marine, marked OM (owner 2026-11-26: roll / pitch gaps)', async () => {
+    const { sampleSeries } = await import('../src/lib/weather');
+    const H0 = Date.UTC(2026, 10, 27, 0);
+    const ts = Array.from({ length: 9 }, (_, i) => H0 + i * 3 * 3600e3);
+    const hole = (v: number) => ts.map((_, i) => (i >= 1 ? null : v)); // 24 h with no waves (shorter holes are bridged)
+    const exTs = Array.from({ length: 25 }, (_, i) => H0 + i * 3600e3);
+    const s: any = {
+        lat: 35, lon: -21, ts, model: 'ecmwf',
+        wind: ts.map(() => 8), windDir: ts.map(() => 300), pressure: ts.map(() => 101500),
+        waves: hole(2), wavesDir: hole(300), wavesPeriod: hole(9), swell1: hole(1.5), swell1Dir: hole(310), swell1Period: hole(11),
+        extra: { ts: exTs, seaH: exTs.map(() => null), seaDir: exTs.map(() => null), seaPer: exTs.map(() => null), curKn: exTs.map(() => null), curDir: exTs.map(() => null), visM: exTs.map(() => null),
+            waveH: exTs.map(() => 2.3), waveDir: exTs.map(() => 330), wavePer: exTs.map(() => 11), sw1H: exTs.map(() => 2.2), sw1Dir: exTs.map(() => 335), sw1Per: exTs.map(() => 10), sw2H: exTs.map(() => 0.4), sw2Dir: exTs.map(() => 200), sw2Per: exTs.map(() => 4), fetchedAt: H0 },
+    };
+    const mid = sampleSeries(s, H0 + 18 * 3600e3)!;
+    assert.equal(mid.wavesOM, true);
+    assert.equal(mid.hs, 2.3);
+    assert.equal(mid.sw1Period, 10);
+    const edge = sampleSeries(s, H0)!;
+    assert.equal(edge.wavesOM, undefined, "Windy's own waves are kept where they exist");
+    assert.equal(edge.hs, 2);
+});
+
+test('a wave period of 0 s never makes roll / pitch NaN; a real swell with 0 s gets a usable period (owner 2026-11-26)', async () => {
+    const { motionAt } = await import('../src/lib/motionEstimate');
+    const v: any = { lbp: 240, breadth: 42.8, draftFwd: 11.8, draftAft: 12.6, gm: 3.94, rollPeriod: 15.1, cb: 0.64, shipType: 'container' };
+    const wx: any = { windKn: 17, windDir: 230, hs: 3.3, hsDir: 298, hsPeriod: 11, sw1: 3.1, sw1Dir: 304, sw1Period: 12, sw2: 0.3, sw2Dir: 229, sw2Period: 0, seaHs: 1.1, seaDir: 230, seaPeriod: 0, seaWindy: true };
+    const m = motionAt(wx, 51, 17.8, v)!;
+    assert.ok(isFinite(m.roll) && isFinite(m.pitch), `roll ${m.roll} pitch ${m.pitch}`);
+    const H0 = Date.UTC(2026, 10, 27, 0);
+    const ts = [H0, H0 + 3 * 3600e3];
+    const s: any = { lat: 35, lon: -21, ts, model: 'ecmwf', wind: [8, 8], windDir: [300, 300], pressure: [101500, 101500],
+        waves: [3.3, 3.3], wavesDir: [298, 298], wavesPeriod: [11, 11], swell1: [3.1, 3.1], swell1Dir: [304, 304], swell1Period: [0, 0], swell2: [0, 0], swell2Dir: [229, 229], swell2Period: [0, 0] };
+    const p = (await import('../src/lib/weather')).sampleSeries(s, H0 + 3600e3)!;
+    assert.equal(p.sw1Period, 11, 'no Open-Meteo period kept: the SWH period stands in');
+    assert.equal(p.sw2Period, null, 'swell 2 of 0 m: no period shown');
+});

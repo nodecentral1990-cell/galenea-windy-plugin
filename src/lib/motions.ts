@@ -402,20 +402,23 @@ interface MotionWave extends WaveSystem {
  */
 export function motionWaveSystems(wx: WxPoint): MotionWave[] {
     const ok = (v: number | null | undefined): v is number => v != null && isFinite(v);
+    // a wave period of 0 s (Windy sends it where a swell is all but absent) made the whole roll / pitch NaN: gaps in the
+    // graph (owner's report, 2026-11-26). A period under 1 s counts as no period.
+    const okT = (v: number | null | undefined): v is number => ok(v) && v >= 1;
     const out: MotionWave[] = [];
     const swells: { h: number; t: number }[] = [];
-    if (ok(wx.sw1) && ok(wx.sw1Dir) && ok(wx.sw1Period) && wx.sw1 > 0.05) {
+    if (ok(wx.sw1) && ok(wx.sw1Dir) && okT(wx.sw1Period) && wx.sw1 > 0.05) {
         out.push({ label: 'Swell 1', height: wx.sw1, fromDir: wx.sw1Dir, period: wx.sw1Period, kind: 'swell' });
         swells.push({ h: wx.sw1, t: wx.sw1Period });
     }
-    if (ok(wx.sw2) && ok(wx.sw2Dir) && ok(wx.sw2Period) && wx.sw2 > 0.05) {
+    if (ok(wx.sw2) && ok(wx.sw2Dir) && okT(wx.sw2Period) && wx.sw2 > 0.05) {
         out.push({ label: 'Swell 2', height: wx.sw2, fromDir: wx.sw2Dir, period: wx.sw2Period, kind: 'swell' });
         swells.push({ h: wx.sw2, t: wx.sw2Period });
     }
     const seaDir = seaDirOf(wx);
-    if (ok(wx.hs) && ok(wx.hsPeriod) && ok(seaDir)) {
+    if (ok(wx.hs) && okT(wx.hsPeriod) && ok(seaDir)) {
         const seaHs = ok(wx.seaHs) ? wx.seaHs : wx.hs;
-        if (seaHs > 0.05 && wx.seaWindy && ok(wx.seaPeriod)) {
+        if (seaHs > 0.05 && wx.seaWindy && okT(wx.seaPeriod)) {
             // Windy's own wind-wave height, direction and period (owner, 2026-10-28)
             out.push({ label: 'Wind sea', height: seaHs, fromDir: seaDir, period: wx.seaPeriod, kind: 'sea' });
         } else if (seaHs > 0.05) {

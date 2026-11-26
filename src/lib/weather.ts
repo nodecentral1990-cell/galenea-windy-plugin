@@ -105,6 +105,8 @@ export interface WxPoint {
     powerKw?: number | null;
     /** The waves are from another forecast point this far away (nm), the nearest had none */
     wavesFromNm?: number;
+    /** SWH and swells came from Open-Meteo marine because Windy's wave forecast had none here at this time (owner, 2026-11-26) */
+    wavesOM?: boolean;
     /** Climate average, not a forecast (beyond the forecast; owner 2026-11-23): the figures behind it */
     clim?: ClimStats;
     /** True when the power was worked out here (0.49 × SWH² × period) rather than sent by Windy */
@@ -239,9 +241,42 @@ export function sampleSeries(s: WxSeries, t: number): WxPoint | null {
     const pressure = valueAt(s.ts, s.pressure, t, 'lin');
     const icon = valueAt(s.ts, s.icon, t, 'nearest');
     const temp = valueAt(s.ts, s.temp, t, 'lin');
-    const hs = wv(s.waves);
-    const sw1 = wv(s.swell1);
-    const sw2 = wv(s.swell2);
+    let hs = wv(s.waves);
+    let sw1 = wv(s.swell1);
+    let sw2 = wv(s.swell2);
+    let hsDir = wd(s.wavesDir);
+    let hsPeriod = wv(s.wavesPeriod);
+    let sw1Dir = wd(s.swell1Dir);
+    let sw1Period = wv(s.swell1Period);
+    let sw2Dir = wd(s.swell2Dir);
+    let sw2Period = wv(s.swell2Period);
+    // A period of 0 s on a real wave is not usable (Windy sends 0 where a swell is all but absent; owner's report 2026-11-26:
+    // it made roll / pitch NaN). Where the height matters, take Open-Meteo's period for that wave, else the SWH period.
+    const fixT = (h: number | null, per: number | null, exKey: 'sw1Per' | 'sw2Per' | 'wavePer'): number | null => {
+        if (valid(per) && per >= 1) return per;
+        if (!valid(h) || h <= 0.05) return valid(per) && per >= 1 ? per : null;
+        const ex = extraAt(s.extra, exKey, t);
+        if (valid(ex) && ex >= 1) return ex;
+        return exKey !== 'wavePer' && valid(hsPeriod) && hsPeriod >= 1 ? hsPeriod : null;
+    };
+    hsPeriod = fixT(hs, hsPeriod, 'wavePer');
+    sw1Period = fixT(sw1, sw1Period, 'sw1Per');
+    sw2Period = fixT(sw2, sw2Period, 'sw2Per');
+    // Windy's wave forecast has nothing here at this time: SWH and the swells from Open-Meteo marine, downloaded with the
+    // forecast (owner's report, 2026-11-26: roll and pitch missing in stretches); marked so the screens can say so
+    let wavesOM = false;
+    if (!valid(hs) && !valid(sw1) && valid(extraAt(s.extra, 'waveH', t))) {
+        wavesOM = true;
+        hs = extraAt(s.extra, 'waveH', t);
+        hsDir = extraAt(s.extra, 'waveDir', t, true);
+        hsPeriod = extraAt(s.extra, 'wavePer', t);
+        sw1 = extraAt(s.extra, 'sw1H', t);
+        sw1Dir = extraAt(s.extra, 'sw1Dir', t, true);
+        sw1Period = extraAt(s.extra, 'sw1Per', t);
+        sw2 = extraAt(s.extra, 'sw2H', t);
+        sw2Dir = extraAt(s.extra, 'sw2Dir', t, true);
+        sw2Period = extraAt(s.extra, 'sw2Per', t);
+    }
     const wwH = wv(s.windWave);
     const visM = valueAt(s.ts, s.vis, t, 'lin');
     const exSea = extraAt(s.extra, 'seaH', t);
@@ -260,21 +295,22 @@ export function sampleSeries(s: WxSeries, t: number): WxPoint | null {
         fog: icon != null && FOG_ICONS.has(icon),
         thunder: icon != null && THUNDER_ICONS.has(icon),
         hs,
-        hsDir: wd(s.wavesDir),
-        hsPeriod: wv(s.wavesPeriod),
+        hsDir,
+        hsPeriod,
         sw1,
-        sw1Dir: wd(s.swell1Dir),
-        sw1Period: wv(s.swell1Period),
+        sw1Dir,
+        sw1Period,
         sw2,
-        sw2Dir: wd(s.swell2Dir),
-        sw2Period: wv(s.swell2Period),
+        sw2Dir,
+        sw2Period,
+        ...(wavesOM ? { wavesOM: true } : {}),
         seaHs: valid(wwH) ? wwH : valid(hs) ? Math.sqrt(Math.max(0, hs * hs - (sw1 ?? 0) ** 2 - (sw2 ?? 0) ** 2)) : null,
         ...(valid(wwH) ? { seaDir: wd(s.windWaveDir), seaPeriod: wv(s.windWavePeriod), seaWindy: true, seaSrc: 'openmeteo' as const } : {}),
         ...(!valid(wwH) && valid(exSea) ? { seaHs: exSea, seaDir: extraAt(s.extra, 'seaDir', t, true), seaPeriod: extraAt(s.extra, 'seaPer', t), seaWindy: true, seaSrc: 'openmeteo' as const } : {}),
         ...(valid(visM) ? { visNm: visM / 1852 } : valid(exVis) ? { visNm: exVis / 1852 } : {}),
         ...(valid(exCur) ? { currentKn: exCur, currentSet: extraAt(s.extra, 'curDir', t, true) } : {}),
         rhPct: valueAt(s.ts, s.rh, t, 'lin'),
-        ...wavePower(wv(s.wavesPower), hs, wv(s.wavesPeriod)),
+        ...wavePower(wavesOM ? null : wv(s.wavesPower), hs, hsPeriod),
         airTempC: valid(temp) ? (temp > 150 ? temp - 273.15 : temp) : null,
         seaTempC: valid(s.sstC) ? s.sstC : null,
     };
@@ -674,7 +710,7 @@ export function buildRows(
     });
 }
 
-const WAVE_KEYS_PT = ['hs', 'hsDir', 'hsPeriod', 'sw1', 'sw1Dir', 'sw1Period', 'sw2', 'sw2Dir', 'sw2Period', 'seaHs', 'seaDir', 'seaPeriod', 'seaWindy', 'seaSrc', 'powerKw', 'powerCalc'] as const;
+const WAVE_KEYS_PT = ['hs', 'hsDir', 'hsPeriod', 'sw1', 'sw1Dir', 'sw1Period', 'sw2', 'sw2Dir', 'sw2Period', 'seaHs', 'seaDir', 'seaPeriod', 'seaWindy', 'seaSrc', 'powerKw', 'powerCalc', 'wavesOM'] as const;
 /** Waves from another point no farther than this when the nearest has none at that time */
 export const WAVES_NEAR_NM = 100;
 
