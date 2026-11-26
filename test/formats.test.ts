@@ -65,3 +65,12 @@ test('plain-language errors', () => {
     assert.throws(() => importRoute('x.csv', enc('a,b\n1,2\n')), /No positions found/);
     assert.throws(() => importRoute('x.rtz', enc('<route><waypoints/></route>')), /no waypoints/);
 });
+
+test('phones: curly quotes and look-alike signs are read as a position (owner 2026-11-26, iPhone smart punctuation)', () => {
+    const near = (a: number | null, b: number) => assert.ok(a != null && Math.abs(a - b) < 1e-9, `${a} vs ${b}`);
+    near(parseCoord('16°13.842’N', 'lat'), 16 + 13.842 / 60);
+    near(parseCoord('061°32.553’W', 'lon'), -(61 + 32.553 / 60));
+    near(parseCoord('16º13.842′N', 'lat'), 16 + 13.842 / 60);
+    near(parseCoord('−61.54255', 'lon'), -61.54255);
+    near(parseCoord('16˚13.842´N', 'lat'), 16 + 13.842 / 60);
+});

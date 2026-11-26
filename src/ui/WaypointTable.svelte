@@ -80,6 +80,7 @@
     import { get } from 'svelte/store';
 
     import { fmtLat, fmtLon, parseCoord } from '../lib/format';
+    import { logEvent } from '../lib/activityLog';
     import type { Waypoint } from '../lib/model';
     import { deleteWaypoints, insertWaypoint, landUids, plan, route, selectWp, selectedUids, sim, updateRoute, vessel } from '../state';
     import { fromTable } from '../lib/speed';
@@ -161,16 +162,27 @@
 
     function setPos(i: number, k: 'lat' | 'lon', e: Event) {
         const input = e.target as HTMLInputElement;
-        const v = parseCoord(input.value, k);
+        const w0 = get(route).waypoints[i];
+        if (!w0) return;
+        const before = k === 'lat' ? fmtLat(w0.lat) : fmtLon(w0.lon);
+        // nothing typed (a phone can send a "change" without an edit): leave the position alone
+        if (input.value.trim() === before) return;
+        let v = parseCoord(input.value, k);
         if (v == null) {
             onMessage(`Could not read "${input.value}". Use e.g. 16°13.842'N or 061°32.553'W.`, true);
-            const w = get(route).waypoints[i];
-            input.value = k === 'lat' ? fmtLat(w.lat) : fmtLon(w.lon);
+            input.value = before;
             return;
         }
+        // no N / S / E / W and no minus typed: keep the waypoint's hemisphere, never flip W to E or S to N silently
+        // (owner's report, 2026-11-26: on the phone, west longitudes became east)
+        const hemiTyped = /[NSEWnsew]|^\s*[-\u2212]/.test(input.value);
+        const was = k === 'lat' ? w0.lat : w0.lon;
+        if (!hemiTyped && was < 0 && v > 0) v = -v;
+        logEvent('route', `WP${i + 1} ${k === 'lat' ? 'latitude' : 'longitude'} typed: "${input.value}" → ${k === 'lat' ? fmtLat(v) : fmtLon(v)} (was ${before})`);
         updateRoute(r => {
-            r.waypoints[i][k] = v;
+            r.waypoints[i][k] = v as number;
         });
+        input.value = k === 'lat' ? fmtLat(v) : fmtLon(v);
     }
 
     function insertAfter(i: number) {

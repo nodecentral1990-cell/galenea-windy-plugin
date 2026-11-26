@@ -10,6 +10,14 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.36.0',
+        date: '2026-11-26',
+        notes: [
+            'Waypoint positions on phones: a longitude or latitude typed without N / S / E / W (and without a minus) now keeps the waypoint\'s hemisphere, so a west longitude can never turn east by itself; boxes that were not changed are left alone; and the curly quotes a phone types (13.842’) are read correctly instead of being refused.',
+            'Every opened route file and every typed position is written to the activity log (what was read, and the position before and after), so a wrong position can be traced.',
+        ],
+    },
+    {
         version: '0.35.0',
         date: '2026-11-26',
         notes: [

@@ -134,7 +134,7 @@
     import { get } from 'svelte/store';
 
     import { EXPORT_FORMATS, IMPORT_ACCEPT, exportRoute, importRoute, type ExportFormat } from '../lib/formats';
-    import { fmtDuration, fmtTime } from '../lib/format';
+    import { fmtDuration, fmtLat, fmtLon, fmtTime } from '../lib/format';
     import { newRoute, type Route } from '../lib/model';
     import { bvsShipInfo } from '../lib/formats/bvs';
     import { addMode, plan, route, selectedUids, sim, thresholds, updateRoute, vessel } from '../state';
@@ -168,6 +168,14 @@
         try {
             const data = new Uint8Array(await file.arrayBuffer());
             const r = importRoute(file.name, data);
+            // what was read, for the activity log (owner's report, 2026-11-26: positions wrong after opening a file on a phone)
+            try {
+                const ws = r.waypoints;
+                const pos = (k: number) => (ws[k] ? `${fmtLat(ws[k].lat)} ${fmtLon(ws[k].lon)}` : '—');
+                logEvent('route', `Opened ${file.name} (${data.length} bytes): ${ws.length} waypoints, first ${pos(0)}, second ${pos(1)}, last ${pos(ws.length - 1)}`);
+            } catch {
+                /* log only */
+            }
             const prev = get(route);
             if (r.etd == null) r.etd = prev.etd;
             route.set(r);

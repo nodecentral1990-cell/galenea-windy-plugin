@@ -86,7 +86,16 @@ export function fromUtcInput(value: string): number | null {
  * "1613.842N" (DDMM.mmm), "06132.553W", "16°13'50.5\"N".
  */
 export function parseCoord(input: string, kind: 'lat' | 'lon'): number | null {
-    let s = String(input).trim().toUpperCase().replace(',', '.');
+    // phones type curly quotes and other look-alikes (iPhone "smart punctuation": 13.842’): read them as ' and "
+    // (owner's report, 2026-11-26)
+    let s = String(input)
+        .replace(/[\u2018\u2019\u201A\u201B\u02B9\u02BC\u00B4\u0060\uFF07]/g, "'")
+        .replace(/[\u201C\u201D\u201E\u201F\u02BA\u02DD\u3003\uFF02]/g, '"')
+        .replace(/[\u02DA\u00BA\u2070\u2218\u00B0]/g, '°')
+        .replace(/[\u2212\u2013\u2014]/g, '-')
+        .trim()
+        .toUpperCase()
+        .replace(',', '.');
     if (!s) {
         return null;
     }
