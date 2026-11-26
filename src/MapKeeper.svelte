@@ -60,6 +60,8 @@
     import { hideMarker, loadPlace, pickAt, setPoint, showMarker } from './windy/placeJob';
     import { startPlaces, stopPlaces } from './windy/placesLayer';
     import { setRingCenter, startRangeRings, stopRangeRings } from './windy/rangeRingsLayer';
+    import { startDriftLayer, stopDriftLayer } from './windy/driftLayer';
+    import { startDriftClock, stopDriftClock } from './windy/driftJob';
     import { startRollChart, stopRollChart } from './windy/rollChart';
     import { startSeaAreas, stopSeaAreas } from './windy/seaAreasLayer';
     import { startWaveChart, stopWaveChart } from './windy/waveChart';
@@ -119,6 +121,8 @@
         safe('Sea areas and limits', startSeaAreas);
         safe('Climate beyond the forecast', startClimate);
         safe('Range rings', startRangeRings);
+        safe('Drift on the map', startDriftLayer);
+        safe('Drift clock', startDriftClock);
         safe('Place marker', showMarker);
         safe('Weather area on the map', startAreaLayer);
         safe('Weather by itself', startAutoWeather);
@@ -216,6 +220,8 @@
             ['Climate', stopClimate],
             ['Sea areas', stopSeaAreas],
             ['Range rings', stopRangeRings],
+            ['Drift', stopDriftLayer],
+            ['Drift clock', stopDriftClock],
             ['Weather by itself', stopAutoWeather],
             ['Weather area', stopAreaLayer],
             ['Place marker', hideMarker],

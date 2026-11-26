@@ -25,9 +25,9 @@ test('map tool: picking a place wins over adding waypoints and over a click on a
     assert.match(toolNote('place'), /does not add a waypoint/);
 });
 
-test('settings registry: 14 groups, each with a title, an icon and one component in SettingsGroup', () => {
-    assert.equal(SETTINGS_GROUPS.length, 14);
-    assert.equal(new Set(SETTINGS_GROUPS.map(g => g.id)).size, 14);
+test('settings registry: 15 groups, each with a title, an icon and one component in SettingsGroup', () => {
+    assert.equal(SETTINGS_GROUPS.length, 15);
+    assert.equal(new Set(SETTINGS_GROUPS.map(g => g.id)).size, 15);
     const src = readFileSync(new URL('../src/ui/settings/SettingsGroup.svelte', import.meta.url), 'utf8');
     for (const g of SETTINGS_GROUPS) {
         assert.ok(g.title && g.icon && g.short && g.hint, g.id);
@@ -45,7 +45,7 @@ test('settings search: finds groups by a word in their title, parts or search wo
         searchGroups('barred').map(g => g.id),
         ['speed'],
     );
-    assert.equal(searchGroups('').length, 14);
+    assert.equal(searchGroups('').length, 15);
     assert.ok(searchGroups('roll period').some(g => g.id === 'motion'));
     assert.ok(searchGroups('colour').some(g => g.id === 'wavechart') && searchGroups('colour').some(g => g.id === 'map'));
     assert.equal(searchGroups('zzzz').length, 0);

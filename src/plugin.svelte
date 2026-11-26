@@ -84,6 +84,8 @@
         {:else}
             <OptimiseTab mode={optSeg} />
         {/if}
+    {:else if tab === 'drift'}
+        <DriftTab />
     {/if}
     {#if help}
         <div class="g-drawer" role="dialog" aria-label="Help">
@@ -211,6 +213,7 @@
     import SnapshotTab from './ui/SnapshotTab.svelte';
     import SpeedTab from './ui/SpeedTab.svelte';
     import CompareTab from './ui/CompareTab.svelte';
+    import DriftTab from './ui/DriftTab.svelte';
     import InfoTab from './ui/InfoTab.svelte';
     import UsageTab from './ui/UsageTab.svelte';
     import UpdateBanner from './ui/UpdateBanner.svelte';
@@ -255,6 +258,7 @@
         { id: 'weather', label: 'Weather', icon: 'weather', title: 'Forecast along the route, table, charts on the map' },
         { id: 'snapshot', label: 'Motion', icon: 'motion', title: 'Polar diagram: IMO warnings, roll and pitch at the map time' },
         { id: 'optimise', label: 'Optimise', icon: 'bolt', title: 'Safe speed and course plan, route optimisation, compare routes' },
+        { id: 'drift', label: 'Drift', icon: 'drift', title: 'Where the ship drifts while stopped: tracks, land warnings, drift polar' },
         { id: 'settings', label: 'Settings', icon: 'gear', title: 'All settings' },
     ];
     const ROUTE_SEGS = [

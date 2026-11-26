@@ -527,7 +527,7 @@ async function go(page, name) {
         ok((await page.locator('details[open]').count()) === 1, '"All settings" closes the other groups, so the one asked for is not lost among them');
         // Settings tab still lists every group, with search and "Used in"
         const titles = await page.locator('details > summary .st-title').allInnerTexts();
-        ok(titles.length === 14 && ['Ship particulars', 'Roll and pitch estimate', 'Speed, RPM and fuel', 'Weather limits', 'Polar diagram', 'Map display', 'Route editing', 'Weather reading', 'Nautical charts and places', 'Wave chart (your colours)', 'Route optimisation', 'Safe speed and course plan', 'Updates', 'Activity log and usage'].every(t => titles.includes(t)), 'the Settings tab still lists every group (14)');
+        ok(titles.length === 15 && ['Ship particulars', 'Roll and pitch estimate', 'Speed, RPM and fuel', 'Weather limits', 'Polar diagram', 'Map display', 'Route editing', 'Weather reading', 'Nautical charts and places', 'Wave chart (your colours)', 'Route optimisation', 'Safe speed and course plan', 'Drift', 'Updates', 'Activity log and usage'].every(t => titles.includes(t)), 'the Settings tab still lists every group (15)');
         await page.locator('.st-search__in').fill('barred');
         await page.waitForTimeout(200);
         const found = await page.locator('details > summary .st-title').allInnerTexts();
@@ -535,7 +535,7 @@ async function go(page, name) {
         await page.screenshot({ path: `${out}/41-settings-search.png` });
         await page.locator('button[aria-label="Clear the search"]').click();
         await page.waitForTimeout(150);
-        ok((await page.locator('details > summary .st-title').count()) === 14, 'clearing the search brings all 14 groups back');
+        ok((await page.locator('details > summary .st-title').count()) === 15, 'clearing the search brings all 15 groups back');
         await page.locator('details#st-motion .st-used__link', { hasText: 'Weather → Map charts' }).click();
         await page.waitForTimeout(200);
         ok((await page.locator('nav.g-nav button.is-on').innerText()).includes('Weather') && (await page.locator('.g-shell > .g-seg button.is-on').innerText()).includes('Map charts'), '"Used in" link under a settings group goes to that screen');
@@ -1128,6 +1128,7 @@ async function go(page, name) {
     // the map key is a floating window too (owner, 2026-11-13)
     ok((await page.locator('.pp-wave-legend .g-fw__min').count()) === 1 && (await page.locator('.pp-wave-legend .g-fw__reset').count()) === 1 && (await page.locator('.pp-wave-legend .g-fw__close').count()) === 1 && (await page.locator('.pp-wave-legend .g-fw__grip--c').count()) === 1, 'wave chart key: minimise, original size, close, and resize');
     await page.locator('.sb .sb__btn[title="Minimise"]').click(); // the ship window can sit over the key
+    await page.waitForTimeout(700); // the key settles after the swell switch (its lines are redrawn)
     const wk0 = await page.locator('.pp-wave-legend').boundingBox();
     const wkh = await page.locator('.pp-wave-legend .g-fw__head').boundingBox();
     await page.mouse.move(wkh.x + 20, wkh.y + wkh.height / 2);
@@ -1782,6 +1783,93 @@ async function go(page, name) {
         }
         await page.unroute(/marine-api\.open-meteo\.com/, mFake);
         await page.unroute(/api\.open-meteo\.com\/v1\/forecast/, vFake);
+    }
+
+    // Drift mode (owner, 2026-11-26): start in open water, tracks for both sides, polar, table; then near a coast: land warning
+    {
+        await go(page, 'Drift');
+        await page.waitForTimeout(300);
+        const card = page.locator('[data-g="drift-card"]');
+        ok((await card.count()) === 1, 'Drift tab opens');
+        const setPos = async (lat, latM, ns, lon, lonM, ew) => {
+            const pis = card.locator('.pi');
+            await pis.nth(0).locator('input.deg').fill(String(lat));
+            await pis.nth(0).locator('input.min').fill(String(latM));
+            await pis.nth(0).locator('select').selectOption(ns);
+            await pis.nth(1).locator('input.deg').fill(String(lon));
+            await pis.nth(1).locator('input.min').fill(String(lonM));
+            await pis.nth(1).locator('select').selectOption(ew);
+            await pis.nth(1).locator('input.min').press('Tab');
+        };
+        // the downloaded current (Open-Meteo marine, made up): 2.5 kn setting 180°, stronger than the wind drift
+        const H = 3600;
+        const tc0 = Math.floor(Date.now() / 86400e3) * 86400 - 86400;
+        const ctime = Array.from({ length: 9 * 24 }, (_, i) => tc0 + i * H);
+        const curFake = route => route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ hourly_units: { ocean_current_velocity: 'km/h' }, hourly: { time: ctime, ocean_current_velocity: ctime.map(() => 4.63), ocean_current_direction: ctime.map(() => 180) } }) });
+        await page.route(/marine-api\.open-meteo\.com/, curFake);
+        await setPos(45, 0, 'N', 30, 0, 'W');
+        await card.locator('[data-g="drift-start"]').click();
+        await page.waitForFunction(() => document.querySelectorAll('.pp-drift-dot').length > 10, null, { timeout: 15000 }).catch(() => {});
+        const dots = await page.locator('.pp-drift-dot').count();
+        ok(dots > 20, `drift tracks on the map with hour marks (${dots} marks)`);
+        const sideTxt = (await card.locator('[data-g="drift-stbd"]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+        const portTxt = (await card.locator('[data-g="drift-port"]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+        ok(/Now: \d+\.\d kn toward \d{3}°, heading about \d{3}°/.test(sideTxt) && /Now: \d+\.\d kn toward \d{3}°/.test(portTxt), `both sides to the weather shown: "${sideTxt.slice(0, 110)}" / "${portTxt.slice(0, 60)}"`);
+        ok(/No land within 40 nm/.test(sideTxt), 'mid-ocean: no land warning');
+        await card.locator('.dr-polar').screenshot({ path: `${out}/24b-drift-polar.png` });
+        ok((await card.locator('.dp-svg polygon[fill="#ffb020"]').count()) === 1 && (await card.locator('.dp-svg path').count()) >= 1, 'drift polar: drift arrow and the ship');
+        const keyTxt = (await card.locator('.dr-key').innerText().catch(() => '')).replace(/\s+/g, ' ');
+        ok(/Wind \d+ kn from \d{3}°/.test(keyTxt) && /Drift over the ground \d+\.\d kn toward \d{3}°/.test(keyTxt) && /Heading about \d{3}°, or \d{3}°/.test(keyTxt), `polar key: wind, drift, both headings: "${keyTxt.slice(0, 160)}"`);
+        ok(/Current 2\.5 kn setting 180°/.test(keyTxt) && (await card.locator('.dp-svg polygon[stroke="#1f6fd1"]').count()) === 1, 'the current is in the drift and drawn (blue, dashed)');
+        const dm = keyTxt.match(/Drift over the ground (\d+\.\d) kn toward (\d{3})°/);
+        ok(dm && Number(dm[2]) > 100 && Number(dm[2]) < 180 && Number(dm[1]) > 2, `resultant follows the stronger current: ${dm ? dm[1] + ' kn toward ' + dm[2] + '°' : 'not shown'}`);
+        ok((await card.locator('.dp-svg text', { hasText: /^3 kn$/ }).count()) === 1, 'speed rings grow with the drift (3 kn ring)');
+        ok(/Roll about \d+°/.test(keyTxt) || /Roll and pitch:/.test(keyTxt), `roll and pitch while drifting: "${(keyTxt.match(/Roll[^:]*?(\d+°|:[^.]*)/) || [''])[0].slice(0, 80)}"`);
+        ok(/SWH \d+\.\d m, \d+ s from \d{3}°/.test(keyTxt), 'waves with their periods in the key');
+        const rowsN = await card.locator('.dr-table tbody tr').count();
+        ok(rowsN >= 24, `hourly drift table (${rowsN} rows)`);
+        ok((await page.locator('path.pp-drift-area').count()) === 1, 'the area the ship may be in is shaded on the map');
+        await page.screenshot({ path: `${out}/24-drift.png` });
+        // a position update (typed): the drift runs from it
+        ok((await card.locator('[data-g="drift-update-gps"]').count()) === 1, 'Update position now (GPS) button');
+        await card.locator('.dr-type summary').click();
+        const fixPis = card.locator('.dr-fix .pi');
+        await fixPis.nth(0).locator('input.deg').fill('45');
+        await fixPis.nth(0).locator('input.min').fill('2');
+        await fixPis.nth(1).locator('input.deg').fill('29');
+        await fixPis.nth(1).locator('input.min').fill('58');
+        await fixPis.nth(1).locator('select').selectOption('W');
+        await fixPis.nth(1).locator('input.min').press('Tab');
+        await card.locator('[data-g="drift-fix"]').click();
+        await page.waitForTimeout(800);
+        ok(/1 position update/.test(await card.innerText()), 'a position update is added and counted');
+        await card.locator('[data-g="drift-stop"]').click();
+        await page.waitForTimeout(500);
+        ok((await page.locator('.pp-drift-dot').count()) === 0, 'Stop drift takes the tracks off the map');
+        await page.unroute(/marine-api\.open-meteo\.com/, curFake);
+        // near Brittany with the (made-up) south-westerly wind: drifts towards the coast
+        await setPos(47, 45, 'N', 4, 34, 'W');
+        await card.locator('[data-g="drift-start"]').click();
+        await page.waitForFunction(() => document.querySelectorAll('.pp-drift-dot').length > 10, null, { timeout: 15000 }).catch(() => {});
+        await page.waitForTimeout(500);
+        const near = (await card.innerText()).replace(/\s+/g, ' ');
+        ok(/Within 5 nm of land at [^(]*UTC/.test(near) || /The track reaches land/.test(near), 'near a coast: the land warning with its time');
+        log.push('INFO drift near Brittany: ' + (near.match(/(Within 5 nm[^.]*|Land never closer[^.]*|The track reaches land)/g) || []).join(' | '));
+        await page.screenshot({ path: `${out}/25-drift-coast.png` });
+        await card.locator('[data-g="drift-stop"]').click();
+        await page.waitForTimeout(300);
+        // learning from past position updates: started 6 h ago, updates 3 h ago and now, the ship drifted further than estimated
+        const nowMs = Date.now();
+        await page.evaluate(([k, now]) => localStorage.setItem(k, JSON.stringify({ on: true, start: { lat: 45, lon: -30, t: now - 6 * 3600e3 }, fixes: [{ lat: 45.02, lon: -29.9, t: now - 3 * 3600e3 }, { lat: 45.04, lon: -29.8, t: now - 60e3 }] })), ['windy-plugin-passage-plan:drift', nowMs]);
+        await page.reload();
+        await page.waitForTimeout(1500);
+        await go(page, 'Drift');
+        await page.waitForFunction(() => /learned: wind drift/.test(document.querySelector('[data-g="drift-past"]')?.textContent || ''), null, { timeout: 15000 }).catch(() => {});
+        const past = (await page.locator('[data-g="drift-past"]').innerText().catch(() => '')).replace(/\s+/g, ' ');
+        ok(/→ .*drifted \d+\.\d kn toward \d{3}° · estimate was \d+\.\d kn toward \d{3}°/.test(past) && /learned: wind drift \d+ % faster/.test(past), `how the ship drifted, and what was learned: "${past.slice(0, 220)}"`);
+        await page.locator('[data-g="drift-card"]').screenshot({ path: `${out}/26-drift-learned.png` });
+        await page.locator('[data-g="drift-stop"]').click();
+        await page.waitForTimeout(300);
     }
 
     // Updates: newer version found, one-click install through Windy, or the manual steps

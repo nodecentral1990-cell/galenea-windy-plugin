@@ -178,6 +178,23 @@
     <li>Not included: wave drift (roughly 0.3–1 % of the wind speed more in a big sea). The current comes with the
         forecast (Open-Meteo marine model), or from Windy's currents layer where it was read.</li>
 </ul></div></details>
+<details class="gd"><summary>Drift tab: where will we be after drifting?</summary><div class="gd__b"><ul>
+    <li>Type where and when you stopped (or take the ship on the plan, GPS or the map centre) and press <b>Start drift</b>:
+        the tracks for the next hours go on the map, a mark every 1 or 3 hours, solid up to now and dashed ahead.</li>
+    <li>A stopped ship lies with the wind just forward or just abaft the beam and can lie either way round. <b>Green</b> =
+        starboard side to the weather, <b>red</b> = port side: their drift differs by a few degrees, so the tracks part. The
+        yellow area is where you may be if the drift is faster / slower or turned a little.</li>
+    <li>Type the <b>gyro heading</b> when you see it: then only that side is shown, with the angle you really lie at.
+        <b>Update position</b> while drifting (one tap with GPS, or typed from the ECDIS): the prediction runs from your
+        real position, and from all the updates the plugin learns how your ship really drifts (faster / slower, more to the
+        right / left), newer updates counting more. The tab shows each interval: drift seen against the estimate.</li>
+    <li>Warning when a track comes within your distance of land (Settings → Drift, 5 nm to start with), with the time and
+        whether it is in the dark: reposition before then. The land map is coarse (0.1° squares): small islands, rocks,
+        shoals, traffic lanes and platforms are not in it.</li>
+    <li>The Drift polar: wind barb (from where it blows) and gust, SWH flag, current (dashed, where it sets), the drift
+        arrow (where you go, tip at the speed) and the ship at its likely heading (the other way faint).</li>
+    <li>An estimate from the forecast: it is not a substitute for the watch, radar, ECDIS or your own fixes.</li>
+</ul></div></details>
 <details class="gd"><summary>🧊 Cold weather, ice and spray icing</summary><div class="gd__b"><ul>
     <li><b>Windy has no sea-ice data</b> (no ice edge, concentration or thickness; Windy's "icing" layer is icing for
         aircraft). For ice use the official ice services: e.g. Canadian Ice Service (St Lawrence, Montreal), the

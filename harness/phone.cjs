@@ -299,8 +299,10 @@ async function run(browser, W, H, out) {
     await nav('Optimise'); await page.waitForTimeout(200); await shot('p07-optimise'); await noSideScroll('Optimise'); await scan('Optimise');
     await seg('Change the track'); await page.waitForTimeout(200); await shot('p08-track'); await noSideScroll('Change the track'); await scan('Change the track');
     await seg('Compare'); await page.waitForTimeout(200); await shot('p09-compare'); await noSideScroll('Compare'); await scan('Compare');
+    await nav('Drift'); await page.waitForTimeout(200); await shot('p09b-drift'); await noSideScroll('Drift'); await scan('Drift');
+    ok((await page.locator('[data-g="drift-start"]').count()) === 1, 'Drift on the phone: the start form is there');
     await nav('Settings'); await page.waitForTimeout(200); await shot('p10-settings'); await noSideScroll('Settings'); await scan('Settings');
-    ok((await page.locator('details > summary .st-title').count()) === 14 && (await page.locator('.st-search__in').count()) === 1, 'Settings on the phone: search box and all 14 groups');
+    ok((await page.locator('details > summary .st-title').count()) === 15 && (await page.locator('.st-search__in').count()) === 1, 'Settings on the phone: search box and all 15 groups');
     await page.locator('details summary', { hasText: 'Ship particulars' }).click();
     await page.waitForTimeout(200); await shot('p11-ship'); await noSideScroll('Settings → Ship particulars');
     // every settings group open: no sideways scrolling, touch targets, 16 px boxes; then the way out of this long list

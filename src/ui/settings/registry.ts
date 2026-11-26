@@ -35,6 +35,7 @@ const S = {
     motion: { tab: 'snapshot', label: 'Motion' },
     plan: { tab: 'optimise', seg: 'speed', label: 'Optimise → Speed & course' },
     track: { tab: 'optimise', seg: 'route', label: 'Optimise → Change the track' },
+    drift: { tab: 'drift', label: 'Drift tab' },
     about: { tab: 'help', seg: 'about', label: 'Help → About' },
     usage: { tab: 'help', seg: 'usage', label: 'Help → Usage' },
 } satisfies Record<string, Screen>;
@@ -159,6 +160,16 @@ export const SETTINGS_GROUPS: SettingsGroupInfo[] = [
         words: 'safe speed plan avoid keep out stop drift land alter course alteration off track fuel when stopped',
         parts: {},
         usedIn: [S.plan],
+    },
+    {
+        id: 'drift',
+        icon: 'drift',
+        short: 'Drift',
+        title: 'Drift',
+        hint: 'how the ship lies when stopped, tracks shown, warnings near land',
+        words: 'drift drifting stopped stop leeway heading accommodation windage side weather port starboard land danger fix fixes spread hours marks',
+        parts: {},
+        usedIn: [S.drift],
     },
     {
         id: 'updates',

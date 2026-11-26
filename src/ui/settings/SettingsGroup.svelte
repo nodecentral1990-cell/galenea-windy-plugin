@@ -25,6 +25,8 @@
         <OptimiseSettings />
     {:else if id === 'speedplan'}
         <SpeedPlanSettings />
+    {:else if id === 'drift'}
+        <DriftSettings />
     {:else if id === 'updates'}
         <UpdateSettings />
     {:else if id === 'log'}
@@ -45,6 +47,7 @@
     import ChartSettings from './ChartSettings.svelte';
     import OptimiseSettings from './OptimiseSettings.svelte';
     import SpeedPlanSettings from './SpeedPlanSettings.svelte';
+    import DriftSettings from './DriftSettings.svelte';
     import UpdateSettings from './UpdateSettings.svelte';
     import LogSettings from './LogSettings.svelte';
 

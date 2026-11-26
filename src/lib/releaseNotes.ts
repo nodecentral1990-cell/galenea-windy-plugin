@@ -10,6 +10,16 @@ export interface ReleaseNote {
 
 export const RELEASE_NOTES: ReleaseNote[] = [
     {
+        version: '0.38.0',
+        date: '2026-11-26',
+        notes: [
+            'New Drift tab: where will the ship be after stopping? Enter where and when you stopped (or take the ship on the plan, GPS or the map centre) and press Start drift. The map shows the drift for the next hours with either side to the weather (green = starboard side, red = port side), a mark every 1 or 3 hours, and the area you may be in.',
+            'It warns when a drift track comes within your distance of land (5 nm to start with), with the time and whether it is in the dark, so you can reposition in good time.',
+            'Drift polar: wind and gust, SWH, sea and swells with their periods, the current, the wind drift and the resultant drift over the ground, all to scale on rings that grow with the speed, and the ship at its likely heading. Roll and pitch while lying stopped are estimated too.',
+            'Update position while drifting (GPS in one tap, or typed): the prediction runs from your real position and learns from every update how your ship really drifts. Settings → Drift: where the accommodation is, how the ship lies, warnings. An estimate from the forecast: keep the watch, radar and ECDIS.',
+        ],
+    },
+    {
         version: '0.37.0',
         date: '2026-11-26',
         notes: [
